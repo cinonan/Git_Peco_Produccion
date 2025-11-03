@@ -1,0 +1,262 @@
+﻿@using System.Text.Json
+@model AzureSearch.Models.Publico.Models.SearchDataModel
+
+@{
+    var texto = "";
+    var textoFeatureType = "";
+    string showFeatureValue = "";
+    string dataFeatureType = "";
+    string checkFeature = "";
+
+    Func<IEnumerable<AzureSearch.Models.Publico.Models.FilterItemModel>, bool> IsAnyItemSelected = (items) => items != null && items.Any(i => i.IsChecked == "checked");
+
+    bool isAgreementSelected = Model.AgreementFilter != null && Model.AgreementFilter.Any(f => IsAnyItemSelected(f.Items));
+
+    bool isCatalogueEnabled = isAgreementSelected;
+    bool isCatalogueSelected = Model.CatalogueFilter != null && IsAnyItemSelected(Model.CatalogueFilter.Items);
+
+    bool isCategoryEnabled = isCatalogueSelected;
+    bool isCategorySelected = Model.CategoryFilter != null && IsAnyItemSelected(Model.CategoryFilter.Items);
+
+    bool isDepartmentEnabled = isCategorySelected;
+    bool isDepartmentSelected = Model.DepartmentFilter != null && IsAnyItemSelected(Model.DepartmentFilter.Items);
+
+    bool isFeatureEnabled = isDepartmentSelected;
+
+    string disabledClass = "disabled-facet";
+    string disabledStyle = "opacity: 0.5; pointer-events: none; cursor: not-allowed;";
+
+    // Parse client feature list de forma segura para uso en la vista (case-insensitive)
+    var clientFeatureListLower = new List<string>();
+    if (!string.IsNullOrWhiteSpace(Model.ClientFilter?.Feature))
+    {
+        try
+        {
+            clientFeatureListLower = JsonSerializer.Deserialize<List<string>>(Model.ClientFilter.Feature)
+                ?.Select(s => s?.ToLowerInvariant() ?? "")
+                .ToList() ?? new List<string>();
+        }
+        catch
+        {
+            clientFeatureListLower = new List<string>();
+        }
+    }
+}
+
+<nav class="mt-2">
+    <ul class="nav nav-pills nav-sidebar flex-column" data-widget="treeview" role="menu" data-accordion="false">
+
+        @if (Model != null && Model.Results != null)
+        {
+            if (Model.AgreementFilter != null)
+            {
+                <li class="nav-item has-treeview">
+                    <a href="#" class="nav-link" style="font-weight: bold !important; ">
+                        <p style="font-weight: bold !important;">
+                            Acuerdos
+                            <i class="fas fa-angle-left right"></i>
+                        </p>
+                    </a>
+                    <ul class="nav nav-treeview">
+                        @foreach (var filter in Model.AgreementFilter)
+                        {
+                            <li class="nav-item has-treeview">
+                                <a href="#" class="nav-link" style="font-weight: bold !important; ">
+                                    <p style="font-weight: bold !important;">
+                                        @{
+                                            texto = filter.Text.Substring(0, 1) + filter.Text.Substring(1).ToLower();
+                                        }
+                                        @texto
+                                        <i class="fas fa-angle-left right"></i>
+                                    </p>
+                                </a>
+                                <ul class="nav nav-treeview">
+                                    @foreach (var item in filter.Items)
+                                    {
+                                        <li class="nav-item">
+                                            <a href="#" class="nav-link">
+                                                <div class="form-check">
+                                                    <input class="form-check-input agreement-chk" id="@item.Id" type="checkbox" data-filter="@item.Value.Replace("\'", "\'\'")" @item.IsChecked>
+                                                    <label class="form-check-label" for="@item.Id">
+                                                        @{
+                                                            texto = item.Text.Substring(0, 13) + item.Text.Substring(13).ToLower();
+                                                        }
+                                                        @texto
+                                                    </label>
+                                                </div>
+                                            </a>
+                                        </li>
+                                    }
+                                </ul>
+                            </li>
+                        }
+                    </ul>
+                </li>
+            }
+
+            if (Model.CatalogueFilter != null)
+            {
+                <li class="nav-item has-treeview @(!isCatalogueEnabled ? disabledClass : "")" style="@(!isCatalogueEnabled ? disabledStyle : "")">
+                    <a href="#" class="nav-link" style="font-weight: bold !important;">
+                        <p style="font-weight: bold !important;">
+                            @Model.CatalogueFilter.Text
+                            <i class="fas fa-angle-left right"></i>
+                        </p>
+                    </a>
+                    <ul class="nav nav-treeview">
+                        @foreach (var item in Model.CatalogueFilter.Items)
+                        {
+                            <li class="nav-item">
+                                <a href="#" class="nav-link">
+                                    <div class="form-check">
+                                        <input class="form-check-input catalogue-chk" id="@item.Id" type="checkbox" data-filter="@item.Text.Replace("\'", "\'\'")" @item.IsChecked>
+                                        <label class="form-check-label" for="@item.Id">
+                                            @{
+                                                texto = item.Text.Substring(0, 1) + item.Text.Substring(1).ToLower();
+                                            }
+                                            @texto (@item.Count)
+                                        </label>
+                                    </div>
+                                </a>
+                            </li>
+                        }
+                    </ul>
+                </li>
+            }
+
+            if (Model.CategoryFilter != null)
+            {
+                <li class="nav-item has-treeview @(!isCategoryEnabled ? disabledClass : "")" style="@(!isCategoryEnabled ? disabledStyle : "")">
+                    <a href="#" class="nav-link" style="font-weight: bold !important;">
+                        <p style="font-weight: bold !important;">
+                            @Model.CategoryFilter.Text
+                            <i class="fas fa-angle-left right"></i>
+                        </p>
+                    </a>
+                    <ul class="nav nav-treeview">
+                        @foreach (var item in Model.CategoryFilter.Items)
+                        {
+                            <li class="nav-item">
+                                <a href="#" class="nav-link">
+                                    <div class="form-check">
+                                        <input class="form-check-input category-chk" id="@item.Id" type="checkbox" data-filter="@item.Text.Replace("\'", "\'\'")" @item.IsChecked>
+                                        <label class="form-check-label" for="@item.Id">
+                                            @{
+                                                texto = item.Text.Substring(0, 1) + item.Text.Substring(1).ToLower();
+                                            }
+                                            @texto (@item.Count)
+                                        </label>
+                                    </div>
+                                </a>
+                            </li>
+                        }
+                    </ul>
+                </li>
+            }
+
+            if (Model.DepartmentFilter != null)
+            {
+                <li class="nav-item has-treeview @(!isDepartmentEnabled ? disabledClass : "")" style="@(!isDepartmentEnabled ? disabledStyle : "")">
+                    <a href="#" class="nav-link" style="font-weight: bold !important;">
+                        <p class="m-0" style="font-weight: bold !important;word-break: break-all !important; margin-right: 10px !important;">
+                            @Model.DepartmentFilter.Text
+                            <i class="fas fa-angle-left right"></i>
+                        </p>
+                    </a>
+
+                    <ul class="nav nav-treeview">
+                        @foreach (var item in Model.DepartmentFilter.Items)
+                        {
+                            <li class="nav-item">
+                                <a href="#" class="nav-link">
+                                    <div class="form-check">
+                                        <input class="form-check-input department-chk" id="@item.Id" type="checkbox" data-filter="@item.Text.Replace("\'", "\'\'")" @item.IsChecked>
+                                        <label class="form-check-label" for="@item.Id">
+                                            @{
+                                                texto = item.Text.Substring(0, 1) + item.Text.Substring(1).ToLower();
+                                            }
+                                            @texto
+                                        </label>
+                                    </div>
+                                </a>
+                            </li>
+                        }
+                    </ul>
+                </li>
+            }
+
+            if (Model.FeatureFilter != null)
+            {
+                string menuOpen = Model.FeatureFilter.Where(w => w.IsChecked == "menu-open").Count() > 0 ? "menu-open" : "";
+                <li class="nav-item has-treeview @menuOpen @(!isFeatureEnabled ? disabledClass : "")" style="@(!isFeatureEnabled ? disabledStyle : "")">
+                    <a href="#" class="nav-link" style="font-weight: bold !important; ">
+                        <p style="font-weight: bold !important;">
+                            Características
+                            <i class="fas fa-angle-left right"></i>
+                        </p>
+                    </a>
+                    <ul class="nav nav-treeview">
+                        @foreach (var filter in Model.FeatureFilter)
+                        {
+                            int count = 0;
+                            showFeatureValue = "";
+                            dataFeatureType = "";
+                            checkFeature = filter.Text.Split(" (")[0].ToLower();
+
+                            <li class="nav-item has-treeview @filter.IsChecked">
+                                <a href="#" class="nav-link" style="font-weight: bold !important; ">
+                                    <p style="font-weight: bold !important;">
+                                        @{
+                                            textoFeatureType = filter.Text.Substring(0, 1) + filter.Text.Substring(1).ToLower();
+                                        }
+                                        @textoFeatureType 
+                                        <i class="fas fa-angle-left right"></i>
+                                    </p>
+                                </a>
+                                <ul class="nav nav-treeview">
+                                    @{
+                                        count = 0; showFeatureValue = "block";
+                                    }
+                                    @foreach (var item in filter.Items)
+                                    {
+
+                                        // Controlar "ver todos" basado en clientFeatureListLower para mayor precisión
+                                        if (clientFeatureListLower.Any() && clientFeatureListLower.Any(cf => cf.StartsWith(checkFeature)) && count > 9 && !Model.IsNewSearch)
+                                        {
+                                            showFeatureValue = "display: none";
+                                            dataFeatureType = textoFeatureType;
+                                        }
+
+                                        <li class="nav-item" data-feature-type="@dataFeatureType" style="@showFeatureValue;">
+                                            <a href="#" class="nav-link">
+                                                <div class="form-check">
+                                                    <input class="form-check-input feature-chk" id="@item.Id" type="checkbox" data-filter="@item.Value.Replace("\'", "\'\'")" @item.IsChecked>
+                                                    <label class="form-check-label" for="@item.Id">
+                                                        @{
+                                                            texto = item.Text.Substring(0, 1) + item.Text.Substring(1).ToLower();
+                                                        }
+                                                        @texto
+                                                    </label>
+                                                </div>
+                                            </a>
+                                        </li>
+                                        count++;
+                                    }
+                                    @if (clientFeatureListLower.Any() && filter.Items.Count > 10 && !Model.IsNewSearch && clientFeatureListLower.Any(cf => cf.StartsWith(checkFeature)))
+                                    {
+                                        <li class="nav-item">
+                                            <a href="#" class="nav-link expand-collapse color-morado" style="font-weight:bold;" data-feature-type-key="@textoFeatureType">
+                                                Ver todos
+                                            </a>
+                                        </li>
+                                    }
+                                </ul>
+                            </li>
+                        }
+                    </ul>
+                </li>
+            }
+        }
+
+    </ul>
+</nav>

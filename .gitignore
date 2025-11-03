@@ -1,0 +1,45 @@
+# Archivos y carpetas de Visual Studio y .NET
+# ----------------------------------------
+# EXCLUSIÓN DE CARPETAS GENERADAS POR LA COMPILACIÓN (C#)
+bin/
+obj/
+ 
+# Paquetes de NuGet y otros caches
+.nuget/
+*.nupkg
+.vs/
+*.suo
+*.user
+*.pdb
+*.sdf
+ 
+# Ejecutables
+*.exe
+*.dll
+*.obj
+*.pdb
+*.ilk
+*.aps
+*.ncb
+*.lib
+*.idb
+*.opt
+*.lst
+*.res
+*.pch
+*.ipch
+ 
+# Archivos temporales
+*.[Cc]ache
+*.log
+*.tmp
+*.bak
+
+# Archivos de recursos y dependencias de UI (si no se modifican)
+# Si no modificas SVGs, puedes excluirlos, pero si son parte del código fuente, quítalo.
+*.svg
+
+# EXCLUSIÓN DE ARCHIVOS DE CONFIGURACIÓN QUE CONTIENEN CLAVES
+# -----------------------------------------------------------
+appsettings.json
+appsettings.Development.json
