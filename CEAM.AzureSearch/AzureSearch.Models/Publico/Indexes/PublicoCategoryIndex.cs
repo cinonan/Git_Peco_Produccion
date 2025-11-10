@@ -16,5 +16,7 @@ namespace AzureSearch.Models.Publico.Indexes
 
         [SimpleField]
         public List<PublicoFeatureDocument> Features { get; set; }
+        [SimpleField]
+        public string ContentHash { get; set; }
     }
 }

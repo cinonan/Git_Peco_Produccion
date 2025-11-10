@@ -15,5 +15,7 @@ namespace AzureSearch.Models.Publico.Indexes
 
         [SimpleField(IsFilterable = true, IsFacetable = true)]
         public List<PublicoCategoryDocument> Categories { get; set; }
+        [SimpleField]
+        public string ContentHash { get; set; }
     }
 }

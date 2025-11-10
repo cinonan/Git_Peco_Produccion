@@ -1,4 +1,5 @@
-﻿using Azure;
+using Azure;
+using Azure.Search.Documents;
 using Azure.Search.Documents.Indexes;
 using Azure.Search.Documents.Indexes.Models;
 using AzureSearch.Models;
@@ -9,35 +10,77 @@ using Microsoft.Extensions.Configuration;
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Net.Http;
 using System.Text.Json;
 using System.Threading.Tasks;
+using AzureSearch.DataApp.Publico.Util;
 
 namespace AzureSearch.DataApp.Publico.Processes
 {
     public class PublicoUploadProcess
     {
         #region "Properties"
-        private string targetSearchServiceName;
-        private string targetAdminKey;
-        private string targetIndexName;
-        private string targetAgreementIndexName;
-        private string targetCatalogueIndexName;
-        private string targetCategoryIndexName;
-        private string backupDirectory;
+        private readonly string targetSearchServiceName;
+        private readonly string targetAdminKey;
+        private readonly string targetIndexName;
+        private readonly string targetAgreementIndexName;
+        private readonly string targetCatalogueIndexName;
+        private readonly string targetCategoryIndexName;
+        private readonly string backupDirectory;
 
-        private SearchIndexClient _targetIndexClient;
+        private readonly SearchIndexClient _targetIndexClient;
+        private readonly SearchClient _productSearchClient;
+        private readonly SearchClient _agreementSearchClient;
+        private readonly SearchClient _catalogueSearchClient;
+        private readonly SearchClient _categorySearchClient;
         #endregion
 
         #region "Constructors"
         public PublicoUploadProcess()
         {
-            ConfigurationSetup();
+            IConfigurationBuilder builder = new ConfigurationBuilder().AddJsonFile("appsettings.json");
+            IConfigurationRoot configuration = builder.Build();
+
+            targetSearchServiceName = configuration["AzureSearch:Load:ServiceName"];
+            targetAdminKey = configuration["AzureSearch:Load:AdminKey"];
+            targetIndexName = configuration["AzureSearch:Load:IndexName"];
+            targetAgreementIndexName = configuration["AzureSearch:Load:AgreementIndexName"];
+            targetCatalogueIndexName = configuration["AzureSearch:Load:CatalogueIndexName"];
+            targetCategoryIndexName = configuration["AzureSearch:Load:CategoryIndexName"];
+            backupDirectory = configuration["AzureSearch:Load:Directory"];
+
+            _targetIndexClient = new SearchIndexClient(new Uri($"https://{targetSearchServiceName}.search.windows.net"), new AzureKeyCredential(targetAdminKey));
+            _productSearchClient = _targetIndexClient.GetSearchClient(targetIndexName);
+            _agreementSearchClient = _targetIndexClient.GetSearchClient(targetAgreementIndexName);
+            _catalogueSearchClient = _targetIndexClient.GetSearchClient(targetCatalogueIndexName);
+            _categorySearchClient = _targetIndexClient.GetSearchClient(targetCategoryIndexName);
         }
         #endregion
 
         #region "Public Methods"
         public async Task LoadDocuments((
+            List<PublicoAgreementIndex>,
+            List<PublicoCatalogueIndex>,
+            List<PublicoCategoryIndex>,
+            List<PublicoProductIndex>) documents, bool forceFullReload = false)
+        {
+            if (forceFullReload)
+            {
+                MessageUtil.Write(false, "Iniciando recarga completa de todos los índices...");
+                await HandleFullReloadAsync(documents);
+            }
+            else
+            {
+                MessageUtil.Write(false, "Iniciando actualización incremental de todos los índices...");
+                await HandleIncrementalUpdateAsync(documents);
+            }
+        }
+        #endregion
+
+        #region "Workflow Logic"
+
+        private async Task HandleFullReloadAsync((
             List<PublicoAgreementIndex>,
             List<PublicoCatalogueIndex>,
             List<PublicoCategoryIndex>,
@@ -53,69 +96,220 @@ namespace AzureSearch.DataApp.Publico.Processes
             await CreateCategoryIndexAsync();
             await CreateProductSheetIndexAsync();
 
-            SendAgreements(documents.Item1);
-            SendCatalogues(documents.Item2);
-            SendCategories(documents.Item3);
-            SendProductSheets(documents.Item4);
-        }
-        #endregion
+            documents.Item1.ForEach(doc => doc.ContentHash = HashingUtil.CalculateContentHash(doc));
+            documents.Item2.ForEach(doc => doc.ContentHash = HashingUtil.CalculateContentHash(doc));
+            documents.Item3.ForEach(doc => doc.ContentHash = HashingUtil.CalculateContentHash(doc));
+            documents.Item4.ForEach(doc => doc.ContentHash = HashingUtil.CalculateContentHash(doc));
 
-        #region "Private Methods"
-        private void ConfigurationSetup()
+            await UploadBatchAsync(_agreementSearchClient, documents.Item1, "Acuerdos");
+            await UploadBatchAsync(_catalogueSearchClient, documents.Item2, "Catálogos");
+            await UploadBatchAsync(_categorySearchClient, documents.Item3, "Categorías");
+            await UploadBatchAsync(_productSearchClient, documents.Item4, "Productos");
+        }
+
+        private async Task HandleIncrementalUpdateAsync((
+            List<PublicoAgreementIndex>,
+            List<PublicoCatalogueIndex>,
+            List<PublicoCategoryIndex>,
+            List<PublicoProductIndex>) documents)
         {
-            IConfigurationBuilder builder = new ConfigurationBuilder().AddJsonFile("appsettings.json");
-            IConfigurationRoot configuration = builder.Build();
+            await ProcessIndexIncrementallyAsync(_agreementSearchClient, documents.Item1, doc => doc.Id, "Acuerdos");
+            await ProcessIndexIncrementallyAsync(_catalogueSearchClient, documents.Item2, doc => doc.Id, "Catálogos");
+            await ProcessIndexIncrementallyAsync(_categorySearchClient, documents.Item3, doc => doc.Id, "Categorías");
+            await ProcessIndexIncrementallyAsync(_productSearchClient, documents.Item4, doc => doc.Id, "Productos");
+        }
 
-            targetSearchServiceName = configuration["AzureSearch:Load:ServiceName"];
-            targetAdminKey = configuration["AzureSearch:Load:AdminKey"];
-            targetIndexName = configuration["AzureSearch:Load:IndexName"];
-            targetAgreementIndexName = configuration["AzureSearch:Load:AgreementIndexName"];
-            targetCatalogueIndexName = configuration["AzureSearch:Load:CatalogueIndexName"];
-            targetCategoryIndexName = configuration["AzureSearch:Load:CategoryIndexName"];
+        private async Task ProcessIndexIncrementallyAsync<T>(SearchClient searchClient, List<T> newDocuments, Func<T, string> getId, string indexFriendlyName) where T : class
+        {
+            MessageUtil.Write(false, $"--- Procesando Índice: {indexFriendlyName} ---");
 
-            backupDirectory = configuration["AzureSearch:Load:Directory"];
-            _targetIndexClient = new SearchIndexClient(new Uri("https://" + targetSearchServiceName + ".search.windows.net"), new AzureKeyCredential(targetAdminKey));
+            MessageUtil.Write(false, $"Paso 1: Obteniendo estado actual del índice '{searchClient.IndexName}'...");
+            var existingHashes = await GetCurrentHashesAsync(searchClient);
+            MessageUtil.Write(true, $"Se encontraron {existingHashes.Count} documentos existentes.");
+
+            MessageUtil.Write(false, "Paso 2: Calculando hashes y clasificando documentos...");
+            var toUpload = new List<T>();
+            var unchangedCount = 0;
+            var newDocumentIds = new HashSet<string>();
+
+            var hashProperty = typeof(T).GetProperty("ContentHash");
+
+            foreach (var doc in newDocuments)
+            {
+                var id = getId(doc);
+                newDocumentIds.Add(id);
+
+                if (hashProperty != null)
+                {
+                    var newHash = HashingUtil.CalculateContentHash(doc);
+                    hashProperty.SetValue(doc, newHash);
+
+                    if (existingHashes.TryGetValue(id, out var existingHash))
+                    {
+                        if (newHash != existingHash)
+                        {
+                            toUpload.Add(doc);
+                        }
+                        else
+                        {
+                            unchangedCount++;
+                        }
+                    }
+                    else
+                    {
+                        toUpload.Add(doc);
+                    }
+                }
+            }
+            MessageUtil.Write(true, $"{toUpload.Count} documentos para cargar/actualizar, {unchangedCount} sin cambios.");
+
+            MessageUtil.Write(false, "Paso 3: Identificando documentos para eliminar...");
+            var toDelete = existingHashes.Keys.Where(id => !newDocumentIds.Contains(id))
+                                              .Select(id => new { Id = id }).ToList();
+            MessageUtil.Write(true, $"{toDelete.Count} documentos para eliminar.");
+
+            if (toUpload.Any())
+            {
+                await UploadBatchAsync(searchClient, toUpload, indexFriendlyName);
+            }
+            if (toDelete.Any())
+            {
+                await DeleteBatchAsync(searchClient, toDelete, indexFriendlyName);
+            }
+
+            MessageUtil.Write(false, $"--- Finalizado: {indexFriendlyName} ---");
+        }
+
+        #endregion
+
+        #region "Azure Search Operations"
+        private async Task<Dictionary<string, string>> GetCurrentHashesAsync(SearchClient searchClient)
+        {
+            var hashes = new Dictionary<string, string>();
+            var options = new SearchOptions
+            {
+                Select = { "Id", "ContentHash" },
+                Size = 1000
+            };
+
+            try
+            {
+                var searchResult = await searchClient.SearchAsync<JsonDocument>("*", options);
+                foreach (var page in searchResult.Value.GetResults().AsPages())
+                {
+                    foreach (var result in page.Values)
+                    {
+                        var doc = result.Document;
+                        if (doc.RootElement.TryGetProperty("Id", out var idElement) && doc.RootElement.TryGetProperty("ContentHash", out var hashElement))
+                        {
+                            var id = idElement.GetString();
+                            var hash = hashElement.GetString();
+                            if (!string.IsNullOrEmpty(id) && !string.IsNullOrEmpty(hash))
+                            {
+                                hashes[id] = hash;
+                            }
+                        }
+                    }
+                }
+            }
+            catch (RequestFailedException ex) when (ex.Status == 404)
+            {
+                 MessageUtil.Write(false, $"Advertencia: El índice '{searchClient.IndexName}' no existe. Se tratará como una carga inicial.");
+            }
+            return hashes;
+        }
+
+        private async Task UploadBatchAsync<T>(SearchClient searchClient, List<T> documents, string indexFriendlyName)
+        {
+            if (documents == null || !documents.Any()) return;
+
+            MessageUtil.Write(false, $"Azure Search: {indexFriendlyName} -> Iniciando carga de {documents.Count} registros...");
+
+            const int batchSize = 1000;
+
+            if (indexFriendlyName != "Productos" || documents.Count <= batchSize)
+            {
+                try
+                {
+                    await searchClient.UploadDocumentsAsync(documents, new IndexDocumentsOptions { ThrowOnAnyError = true });
+                    MessageUtil.Write(true, $"Azure Search: {indexFriendlyName} -> {documents.Count} registros procesados exitosamente en una sola operación.");
+                }
+                catch (Exception ex)
+                {
+                    MessageUtil.Write(false, $"  Error en lote de carga único para {indexFriendlyName}: {ex.Message}");
+                }
+                return;
+            }
+
+            int totalBatches = (int)Math.Ceiling((double)documents.Count / batchSize);
+            MessageUtil.Write(false, $"Se procesarán {totalBatches} lotes de hasta {batchSize} registros cada uno.");
+
+            for (int i = 0; i < totalBatches; i++)
+            {
+                var batch = documents.Skip(i * batchSize).Take(batchSize).ToList();
+                if (!batch.Any()) continue;
+
+                MessageUtil.Write(false, $"  Procesando lote {i + 1} de {totalBatches} ({batch.Count} registros)...");
+                try
+                {
+                    var response = await searchClient.UploadDocumentsAsync(batch, new IndexDocumentsOptions { ThrowOnAnyError = true });
+
+                    if (response.Value.Results.Any(r => !r.Succeeded))
+                    {
+                        var failedDocs = response.Value.Results.Where(r => !r.Succeeded);
+                        MessageUtil.Write(false, $"    ¡Advertencia! {failedDocs.Count()} documentos fallaron en el lote {i + 1}. Primer error: {failedDocs.First().ErrorMessage}");
+                    }
+                    else
+                    {
+                        MessageUtil.Write(true, $"    Lote {i + 1} completado exitosamente.");
+                    }
+                }
+                catch (RequestFailedException ex)
+                {
+                    MessageUtil.Write(false, $"  Error en lote de carga {i + 1} para {indexFriendlyName}: {ex.Message}");
+                }
+                catch (Exception ex)
+                {
+                    MessageUtil.Write(false, $"  Error general en lote de carga {i + 1} para {indexFriendlyName}: {ex.Message}");
+                }
+            }
+             MessageUtil.Write(true, $"Azure Search: {indexFriendlyName} -> Carga por lotes finalizada.");
+        }
+
+        private async Task DeleteBatchAsync<T>(SearchClient searchClient, List<T> documents, string indexFriendlyName) where T : class
+        {
+            if (documents == null || !documents.Any()) return;
+
+            MessageUtil.Write(false, $"Azure Search: {indexFriendlyName} -> Eliminando {documents.Count} registros...");
+            try
+            {
+                await searchClient.DeleteDocumentsAsync(documents, new IndexDocumentsOptions { ThrowOnAnyError = true });
+                MessageUtil.Write(true, $"Azure Search: {indexFriendlyName} -> {documents.Count} registros eliminados exitosamente.");
+            }
+            catch (Exception ex)
+            {
+                MessageUtil.Write(false, $"  Error en lote de eliminación para {indexFriendlyName}: {ex.Message}");
+            }
         }
         #endregion
 
-        #region "Restore Index and Documents"
-
+        #region "Configuration and Index Management"
         private async Task DeleteIndexIfExistsAsync(string indexName)
         {
             MessageUtil.Write(false,"Azure Search: Delete index -> " + indexName);
-
             try
             {
-                //await indexClient.GetIndexAsync(indexName);
                 await _targetIndexClient.DeleteIndexAsync(indexName);
             }
-            catch (Exception ex)
+            catch (RequestFailedException ex) when (ex.Status == 404)
             {
-                MessageUtil.Write(false,ex.Message);
+                MessageUtil.Write(false, "El índice no existía, no se requiere eliminación.");
             }
         }
 
-        /*
-        private async Task CreateProductSheetIndexAsync()
-        {
-            MessageUtil.Write(false,"Azure Search: Create index -> " + targetIndexName);
-            try
-            {
-                FieldBuilder builder = new FieldBuilder();
-                var definition = new SearchIndex(targetIndexName, builder.Build(typeof(PublicoProductIndex)));
-                await _targetIndexClient.CreateIndexAsync(definition);
-            }
-            catch (Exception ex)
-            {
-                MessageUtil.Write(false,ex.Message);
-                throw;
-            }
-        }
-        */
         private async Task CreateAgreementIndexAsync()
         {
-            MessageUtil.Write(false,"Azure Search: Create index -> " + targetAgreementIndexName);
-
+            MessageUtil.Write(false, "Azure Search: Create index -> " + targetAgreementIndexName);
             try
             {
                 FieldBuilder builder = new FieldBuilder();
@@ -124,15 +318,14 @@ namespace AzureSearch.DataApp.Publico.Processes
             }
             catch (Exception ex)
             {
-                MessageUtil.Write(false,ex.Message);
+                MessageUtil.Write(false, ex.Message);
                 throw;
             }
         }
 
         private async Task CreateCatalogueIndexAsync()
         {
-            MessageUtil.Write(false,"Azure Search: Create index -> " + targetCatalogueIndexName);
-
+            MessageUtil.Write(false, "Azure Search: Create index -> " + targetCatalogueIndexName);
             try
             {
                 FieldBuilder builder = new FieldBuilder();
@@ -141,15 +334,14 @@ namespace AzureSearch.DataApp.Publico.Processes
             }
             catch (Exception ex)
             {
-                MessageUtil.Write(false,ex.Message);
+                MessageUtil.Write(false, ex.Message);
                 throw;
             }
         }
 
         private async Task CreateCategoryIndexAsync()
         {
-            MessageUtil.Write(false,"Azure Search: Create index -> " + targetCategoryIndexName);
-
+            MessageUtil.Write(false, "Azure Search: Create index -> " + targetCategoryIndexName);
             try
             {
                 FieldBuilder builder = new FieldBuilder();
@@ -158,300 +350,25 @@ namespace AzureSearch.DataApp.Publico.Processes
             }
             catch (Exception ex)
             {
-                MessageUtil.Write(false,ex.Message);
+                MessageUtil.Write(false, ex.Message);
                 throw;
-            }
-        }
-
-        private void SendAgreements(List<PublicoAgreementIndex> documents = null)
-        {
-            MessageUtil.Write(false,"Azure Search: Agreements -> Uploading...");
-
-            try
-            {
-                Uri ServiceUri = new ("https://" + targetSearchServiceName + ".search.windows.net");
-                HttpClient httpClient = new ();
-                httpClient.DefaultRequestHeaders.Add("api-key", targetAdminKey);
-                Uri uri = new (ServiceUri, "/indexes/" + targetAgreementIndexName + "/docs/index");
-
-                if (documents != null && documents.Count > 0)
-                {
-                    var documentJson = new RequestModel<PublicoAgreementIndex> { value = documents };
-                    var json = JsonSerializer.Serialize(documentJson);
-                    HttpResponseMessage response = AzureSearchHelper.SendSearchRequest(httpClient, HttpMethod.Post, uri, json);
-                    response.EnsureSuccessStatusCode();
-                    MessageUtil.Write(true, string.Format("Azure Search: Agreements -> {0} records uploaded", documents.Count.ToString()));
-                }
-            }
-            catch (Exception ex)
-            {
-                MessageUtil.Write(false,"  Error: {0}", ex.Message.ToString());
-            }
-        }
-
-        private void SendCatalogues(List<PublicoCatalogueIndex> documents = null)
-        {
-            MessageUtil.Write(false, "Azure Search: Catalogues -> Uploading...");
-
-            try
-            {
-                Uri ServiceUri = new ("https://" + targetSearchServiceName + ".search.windows.net");
-                HttpClient httpClient = new ();
-                httpClient.DefaultRequestHeaders.Add("api-key", targetAdminKey);
-                Uri uri = new (ServiceUri, "/indexes/" + targetCatalogueIndexName + "/docs/index");
-
-                if (documents != null && documents.Count > 0)
-                {
-                    var documentJson = new RequestModel<PublicoCatalogueIndex> { value = documents };
-                    var json = JsonSerializer.Serialize(documentJson);
-                    HttpResponseMessage response = AzureSearchHelper.SendSearchRequest(httpClient, HttpMethod.Post, uri, json);
-                    response.EnsureSuccessStatusCode();
-                    MessageUtil.Write(true, string.Format("Azure Search: Catalogues -> {0} records uploaded", documents.Count.ToString()));
-                }
-            }
-            catch (Exception ex)
-            {
-                MessageUtil.Write(false,"  Error: {0}", ex.Message.ToString());
-            }
-        }
-
-        private void SendCategories(List<PublicoCategoryIndex> documents = null)
-        {
-            MessageUtil.Write(false, "Azure Search: Categories -> Uploading...");
-
-            try
-            {
-                Uri ServiceUri = new ("https://" + targetSearchServiceName + ".search.windows.net");
-                HttpClient httpClient = new ();
-                httpClient.DefaultRequestHeaders.Add("api-key", targetAdminKey);
-                Uri uri = new (ServiceUri, "/indexes/" + targetCategoryIndexName + "/docs/index");
-
-                if (documents != null && documents.Count > 0)
-                {
-                    var documentJson = new RequestModel<PublicoCategoryIndex> { value = documents };
-                    var json = JsonSerializer.Serialize(documentJson);
-                    HttpResponseMessage response = AzureSearchHelper.SendSearchRequest(httpClient, HttpMethod.Post, uri, json);
-                    response.EnsureSuccessStatusCode();
-                    MessageUtil.Write(true, string.Format("Azure Search: Categories -> {0} records uploaded", documents.Count.ToString()));
-                }
-            }
-            catch (Exception ex)
-            {
-                MessageUtil.Write(false,"  Error: {0}", ex.Message.ToString());
-            }
-        }
-
-        private void SendProductSheets(List<PublicoProductIndex> documents = null)
-        {
-            MessageUtil.Write(false, "Azure Search: Products -> Uploading...");
-
-            try
-            {
-                Uri ServiceUri = new ("https://" + targetSearchServiceName + ".search.windows.net");
-                HttpClient httpClient = new ();
-                httpClient.DefaultRequestHeaders.Add("api-key", targetAdminKey);
-                Uri uri = new (ServiceUri, "/indexes/" + targetIndexName + "/docs/index");
-
-                if (documents != null && documents.Count > 0)
-                {
-                    bool condition = true;
-                    int block = 1000;
-                    int min = block * -1;
-
-                    while (condition)
-                    {
-                        min += block;
-
-                        if ((min + block) >= documents.Count)
-                        {
-                            block = documents.Count - min;
-                            condition = false;
-                        }
-
-                        var documentJson = new RequestModel<PublicoProductIndex> { value = documents.GetRange(min, block) };
-                        var json = JsonSerializer.Serialize(documentJson);
-                        var reintento = 0;
-                        while (reintento < 3)
-                        {
-                            try
-                            {
-                                HttpResponseMessage response = AzureSearchHelper.SendSearchRequest(httpClient, HttpMethod.Post, uri, json);
-                                response.EnsureSuccessStatusCode();
-                                MessageUtil.Write(true, string.Format("Azure Search: Products -> {0} of {1} records uploaded", (min + block).ToString(), documents.Count.ToString()));
-                                reintento = 3;
-                            }
-                            catch (Exception ex)
-                            {
-                                reintento++;
-                                MessageUtil.Write(false, "  Error SendProductSheets.SendSearchRequest..se hara reintento{0}: {1}", "" + reintento, ex.Message.ToString());
-                            }
-                        }                        
-                    }
-                }
-                else
-                {
-                    foreach (string fileName in Directory.GetFiles(backupDirectory + "\\" + targetIndexName, targetIndexName + "*.json"))
-                    {
-                        MessageUtil.Write(false,"  -> Uploading documents from file {0}", fileName);
-                        string json = File.ReadAllText(fileName);
-                        HttpResponseMessage response = AzureSearchHelper.SendSearchRequest(httpClient, HttpMethod.Post, uri, json);
-                        response.EnsureSuccessStatusCode();
-                        MessageUtil.Write(false, string.Format("  -> Uploaded documents from file {0}", fileName));
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                MessageUtil.Write(false,"  Error: {0}", ex.Message.ToString());
-            }
-        }
-
-        private void ModifyJSON()
-        {
-            try
-            {
-                foreach (string fileName in Directory.GetFiles(backupDirectory + "\\" + targetIndexName + "_original", targetIndexName + "*.json"))
-                {
-                    MessageUtil.Write(false,"  -> Uploading documents from file {0}", fileName);
-                    string json = File.ReadAllText(fileName);
-                    string updatedJson = json.Replace("DeliveryDeparments", "DeliveryDepartments");
-                    var jsonFile = JsonSerializer.Deserialize<RequestModel<PublicoProductIndex>>(updatedJson);
-
-                    foreach (var ps in jsonFile.value)
-                    {
-                        ps.SearchText = StringUtil.RemoveDiacritics_Publico(ps.Name);
-                        ps.Agreement.SearchText = StringUtil.RemoveDiacritics_Publico(ps.Agreement.Name);
-                    }
-
-                    string newJson = JsonSerializer.Serialize(jsonFile);
-                    var updatedNewJson = newJson.Replace("\"DeliveryDepartments\":null", "\"DeliveryDepartments\":[]");
-
-                    var filePath = Path.Combine(fileName.Replace("_original", ""));
-                    File.WriteAllText(filePath, updatedNewJson);
-
-                    MessageUtil.Write(false,String.Format(" -> file: {0}", fileName));
-                }
-            }
-            catch (Exception ex)
-            {
-                MessageUtil.Write(false,"  Error: {0}", ex.Message.ToString());
             }
         }
 
         private async Task CreateProductSheetIndexAsync()
         {
             MessageUtil.Write(false, "Azure Search: Create index -> " + targetIndexName);
-
             try
             {
-                // Agrega el campo complejo "Agreement" al índice usando SearchField con subcampos
-                var fields = new List<SearchField>
-               {
-                   // Clave primaria
-                   new SimpleField(nameof(PublicoProductIndex.Id), SearchFieldDataType.String) { IsKey = true },
+                FieldBuilder builder = new FieldBuilder();
+                var definition = new SearchIndex(targetIndexName, builder.Build(typeof(PublicoProductIndex)));
 
-                   // Campos simples
-                   new SimpleField(nameof(PublicoProductIndex.Name), SearchFieldDataType.String),
-                   new SearchField(nameof(PublicoProductIndex.SearchText), SearchFieldDataType.String)
-                   {
-                       IsSearchable = true,
-                       AnalyzerName = LexicalAnalyzerName.Values.EsLucene
-                   },
-
-                   // Campo vectorial
-                   
-                   new SearchField(nameof(PublicoProductIndex.ProductArray), SearchFieldDataType.Collection(SearchFieldDataType.Single))
-                   {
-                       IsSearchable = true,
-                       VectorSearchDimensions = 768,
-                       VectorSearchProfileName = "my-vector-profile"
-                   },
-
-                   new SimpleField(nameof(PublicoProductIndex.PublishedDate), SearchFieldDataType.String),
-                   new SimpleField(nameof(PublicoProductIndex.UpdatedDate), SearchFieldDataType.String),
-                   new SimpleField(nameof(PublicoProductIndex.Image), SearchFieldDataType.String),
-                   new SimpleField(nameof(PublicoProductIndex.File), SearchFieldDataType.String),
-
-                   new SimpleField(nameof(PublicoProductIndex.Status), SearchFieldDataType.String) { IsFilterable = true, IsFacetable = true },
-                   new SearchField(nameof(PublicoProductIndex.Departments), SearchFieldDataType.Collection(SearchFieldDataType.String)) { IsFilterable = true, IsFacetable = true },
-                   new SearchField(nameof(PublicoProductIndex.Features), SearchFieldDataType.Collection(SearchFieldDataType.String)) { IsFilterable = true, IsFacetable = true },
-
-                   // Campo complejo Agreement
-                   new SearchField(nameof(PublicoProductIndex.Agreement), SearchFieldDataType.Complex)
-                   {
-                       Fields =
-                       {
-                           new SimpleField(nameof(PublicoAgreementDocument.Id), SearchFieldDataType.String) { IsFilterable = true, IsFacetable = true },
-                           new SimpleField(nameof(PublicoAgreementDocument.Name), SearchFieldDataType.String) { IsFilterable = true, IsFacetable = true },
-                           new SimpleField(nameof(PublicoAgreementDocument.Status), SearchFieldDataType.String) { IsFilterable = true, IsFacetable = true },
-                           new SearchField(nameof(PublicoAgreementDocument.SearchText), SearchFieldDataType.String)
-                           {
-                               IsSearchable = true,
-                               AnalyzerName = LexicalAnalyzerName.Values.EsLucene,
-                               IsFilterable = true,
-                               IsFacetable = true
-                           }
-                       }
-                   },
-
-                   // Campo complejo Catalogue
-                   new SearchField(nameof(PublicoProductIndex.Catalogue), SearchFieldDataType.Complex)
-                   {
-                       Fields =
-                       {
-                           new SimpleField(nameof(PublicoCatalogueDocument.Id), SearchFieldDataType.String) { IsFilterable = true, IsFacetable = true },
-                           new SimpleField(nameof(PublicoCatalogueDocument.Name), SearchFieldDataType.String) { IsFilterable = true, IsFacetable = true }
-                       }
-                   },
-
-                   // Campo complejo Category
-                   new SearchField(nameof(PublicoProductIndex.Category), SearchFieldDataType.Complex)
-                   {
-                       Fields =
-                       {
-                           new SimpleField(nameof(PublicoCategoryDocument.Id), SearchFieldDataType.String) { IsFilterable = true, IsFacetable = true },
-                           new SimpleField(nameof(PublicoCategoryDocument.Name), SearchFieldDataType.String) { IsFilterable = true, IsFacetable = true }
-                       }
-                   },
-
-                   // Campo complejo FeatureTypeList
-                   new SearchField(nameof(PublicoProductIndex.FeatureTypeList), SearchFieldDataType.Collection(SearchFieldDataType.Complex))
-                   {
-                       Fields =
-                       {
-                           new SimpleField(nameof(PublicoFeatureTypeDocument.Id), SearchFieldDataType.String) { IsFilterable = true, IsFacetable = true },
-                           new SimpleField(nameof(PublicoFeatureTypeDocument.Text), SearchFieldDataType.String) { IsFilterable = true, IsFacetable = true },
-                           new SimpleField(nameof(PublicoFeatureTypeDocument.IsRequiredSubValue), SearchFieldDataType.String) { IsFilterable = true, IsFacetable = true },
-                           new SearchField(nameof(PublicoFeatureTypeDocument.Values), SearchFieldDataType.Collection(SearchFieldDataType.Complex))
-                           {
-                               Fields =
-                               {
-                                   new SimpleField(nameof(PublicoFeatureValueDocument.Id), SearchFieldDataType.String) { IsFilterable = true, IsFacetable = true },
-                                   new SimpleField(nameof(PublicoFeatureValueDocument.Text), SearchFieldDataType.String) { IsFilterable = true, IsFacetable = true },
-                                   new SimpleField(nameof(PublicoFeatureValueDocument.ValueImg), SearchFieldDataType.String) { IsFilterable = true, IsFacetable = true },
-                                   new SimpleField(nameof(PublicoFeatureValueDocument.FeatureType), SearchFieldDataType.String) { IsFilterable = true, IsFacetable = true }
-
-                               }
-                           }
-                       }
-                   },
-
-               };
-
-                var definition = new SearchIndex(targetIndexName, fields)
+                definition.VectorSearch = new VectorSearch
                 {
-                    VectorSearch = new VectorSearch
-                    {
-                        Profiles =
-                {
-                    new VectorSearchProfile("my-vector-profile", "exhaustive-knn-algorithm")
-                },
-                        Algorithms =
-                {
-                    new ExhaustiveKnnAlgorithmConfiguration("exhaustive-knn-algorithm")
-                }
-                    }
+                    Profiles = { new VectorSearchProfile("my-vector-profile", "exhaustive-knn-algorithm") },
+                    Algorithms = { new ExhaustiveKnnAlgorithmConfiguration("exhaustive-knn-algorithm") }
                 };
+
                 await _targetIndexClient.CreateIndexAsync(definition);
                 MessageUtil.Write(true, $"Azure Search: Index '{targetIndexName}' created successfully.");
             }
