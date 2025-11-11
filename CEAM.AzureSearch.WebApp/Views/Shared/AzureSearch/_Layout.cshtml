@@ -1,0 +1,376 @@
+﻿<!DOCTYPE html>
+
+<html>
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+    <title>Buscador de Fichas-Producto - Perú Compras</title>
+    <link rel="stylesheet" href="~/lib/bootstrap/dist/css/bootstrap.min.css" />
+    <link rel="stylesheet" href="~/lib/admin-2/vendor/font-awesome/css/font-awesome.min.css" />
+    <link rel="stylesheet" type="text/css" href="https://www.perucompras.gob.pe/assets/css/jquery.fancybox.css">
+    @*<link rel="stylesheet" href="~/css/azure-search/public.css" />*@
+
+<style>
+        html {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Roboto', sans-serif;
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            margin: 0;
+            padding: 0;
+        }
+
+        header {
+            width: 100%;
+        }
+
+        footer {
+            width: 100%;
+        }
+
+
+
+
+    .m-b-30 {
+        margin-bottom: 30px !important;
+    }
+
+
+
+        .fondo-gris-1 {
+            background-color: #eaebec !important;
+        }
+        .color-blanco {
+            color: white !important;
+        }
+        .color-morado {
+            color: #a393c6 !important;
+        }
+
+        .fondo-blanco {
+            background-color: white !important;
+        }
+
+        .fondo-morado {
+            background-color: #a393c6 !important;
+        }
+
+
+        .cabecera {
+            position: fixed;
+            top: 0;
+            z-index: 1000;
+            padding: 15px 20px 15px 20px;
+            -webkit-box-shadow: 0px 3px 5px 0px rgba(0,0,0,0.25);
+            -moz-box-shadow: 0px 3px 5px 0px rgba(0,0,0,0.25);
+            box-shadow: 0px 3px 5px 0px rgba(0,0,0,0.25);
+        }
+
+        .cabecera-izquierda {
+            height: 50px;
+            float: left;
+        }
+
+
+        .cabecera-derecha {
+            display: flex;
+            align-items: center;
+            height: 50px;
+            float: right;
+        }
+
+        .cabecera-logo {
+            height: 50px;
+        }
+
+        .cabecera-contenedor-imagen {
+            display: none;
+            padding: 3px 0 0 15px;
+            height: 50px;
+            float: right;
+            border-left: 1px solid #eee;
+        }
+
+        .icono {
+            line-height: 40px;
+            font-size: 24px;
+        }
+
+        .circulo-icono {
+            width: 40px;
+            height: 40px;
+            border-radius: 20px 20px 20px 20px;
+            -moz-border-radius: 20px 20px 20px 20px;
+            -webkit-border-radius: 20px 20px 20px 20px;
+            text-align: center;
+        }
+
+
+
+
+    #contenido {
+        width: 100%;
+        height: 100%;
+        min-height: 100vh;
+    }
+
+
+
+    .contenedor {
+        max-width: 1200px;
+        padding-right: 0;
+        padding-left: 0;
+        margin-right: auto;
+        margin-left: auto;
+        min-height: 100vh;
+    }
+
+        .contenedor-menu {
+            display: none;
+            position: absolute;
+            top: 0;
+            left: 0;
+            z-index: 998;
+            width: 260px;
+            min-height: 100vh;
+        }
+
+        .contenedor-principal {
+            position: relative;
+            top: 80px;
+            right: 0;
+            z-index: 997;
+            width: 100%;
+            min-height: calc(100% - 130px);
+            padding-left: 0;
+        }
+
+        .contenedor-secundario {
+            padding: 40px 20px 20px 20px;
+        }
+
+
+        #boton-menu-lateral {
+            display: none;
+        }
+
+
+        /**************** Footer ****************/
+        .pie {
+            position: fixed;
+            bottom: 0;
+            z-index: 999;
+            padding: 10px 20px 10px 20px;
+        }
+
+        .pie-central {
+            display: flex;
+            align-items: center;
+            width: 100%;
+            height: 30px;
+            max-width: 260px;
+            margin: 0 auto 0 auto;
+        }
+
+        .pie-izquierda {
+            float: left;
+        }
+
+        .pie-derecha {
+            float: right;
+        }
+
+        .pie-logo {
+            height: 30px;
+        }
+
+        .pie-texto {
+            margin: 0;
+            font-size: 10px;
+            overflow: hidden;
+        }
+
+
+
+
+
+    .custom-control-label {
+        color: #a393c6;
+        font-size: 0.75rem;
+        font-weight: 400;
+    }
+
+        .custom-control-label::before {
+            border-color: #a393c6;
+        }
+
+
+
+    .custom-checkbox .custom-control-input:checked ~ .custom-control-label::before {
+        background-color: #a393c6;
+    }
+
+    .custom-checkbox .custom-control-input:checked ~ .custom-control-label {
+        color: #656560;
+    }
+
+
+
+    .accordion .card-header::after {
+        font-family: 'FontAwesome';
+        content: "\f068";
+        float: right;
+    }
+
+    .accordion .card-header.collapsed::after {
+        /* symbol for "collapsed" panels */
+        content: "\f067";
+    }
+
+    .card-header {
+        font-size: 0.86rem;
+        font-weight: 500 !important;
+    }   
+
+
+
+@@media (min-width: 768px) {
+    /**************** Header ****************/
+    .cabecera {
+        padding: 15px 40px 15px 40px;
+    }
+
+    #boton-menu-superior {
+        display: none;
+    }
+    /**************** Body ****************/
+    .cuerpo-primario {
+        padding: 60px 40px 60px 40px;
+    }
+
+    .contenedor-principal {
+        padding-left: 260px;
+    }
+
+    .contenedor-secundario {
+        padding: 40px 40px 40px 40px;
+    }
+
+    .contenedor-menu {
+        display: block;
+    }
+
+    #boton-menu-lateral {
+        display: block;
+    }
+
+    #respuesta-oculta {
+        padding: 40px 40px 20px 40px;
+    }
+    /**************** Footer ****************/
+    .pie {
+        padding: 10px 40px 10px 40px;
+    }
+}
+
+@@media (min-width: 992px) {
+}
+
+@@media (min-width: 1200px) {
+}
+
+
+
+
+
+
+
+
+
+</style>
+</head>
+<body>
+    <partial name="~/Views/Shared/AzureSearch/_Header.cshtml" />
+    @RenderBody()
+    <partial name="~/Views/Shared/AzureSearch/_Footer.cshtml" />
+
+    <div id="respuesta-oculta"></div>
+    <a id="boton-oculto" data-fancybox data-src="#respuesta-oculta"></a>
+
+    <script src="~/lib/jquery/dist/jquery.min.js"></script>
+    <script src="~/lib/bootstrap/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://www.perucompras.gob.pe/assets/js/jquery.fancybox.min.js"></script>
+    @*<script src="~/js/site.js" asp-append-version="true"></script>*@
+    @*<script src="~/js/azure-search/public.js"></script>*@
+
+    <script>
+        function botonMenuSuperior(objeto) {
+            var estadoMenu = $('.contenedor-menu').css('display');
+            var anchoMenu = $('.contenedor-menu').css('width');
+            $('#boton-menu-superior').css('display', 'none').fadeOut(500);
+            if (estadoMenu == 'block') {
+                $('#boton-menu-superior').html('<i class="fa fa-bars icono color-blanco"></i>');
+                $('.contenedor-menu').css('display', 'none');
+            } else {
+                if (anchoMenu == '60px') {
+                    $('.menu-opciones').css('display', 'block');
+                    $('.contenedor-menu').css('width', '260px');
+                }
+                $('#boton-menu-superior').html('<i class="fa fa-times icono color-blanco"></i>');
+                $('.contenedor-menu').css('display', 'block');
+            }
+            $('#boton-menu-superior').fadeIn(500);
+        }
+
+        function botonMenuLateral(objeto) {
+            var hijo = $(objeto).children('i').attr('class');
+            $('#boton-menu-lateral').css('display', 'none').fadeOut(500);
+            if (hijo == 'fa fa-times icono color-blanco') {
+                $('#boton-menu-lateral').html('<i class="fa fa-bars icono color-blanco"></i>');
+                $('.contenedor-menu').animate({ 'width': '60px' }, 500);
+                $('.contenedor-principal').animate({ 'padding-left': '60px' }, 500);
+                $('.menu-opciones').css('display', 'none').fadeOut(500);
+            } else {
+                $('#boton-menu-lateral').html('<i class="fa fa-times icono color-blanco"></i>');
+                $('.contenedor-menu').animate({ 'width': '260px' }, 500);
+                $('.contenedor-principal').animate({ 'padding-left': '260px' }, 500);
+                $('.menu-opciones').fadeIn(1000);
+            }
+            $('#boton-menu-lateral').fadeIn(500);
+        }
+
+        function detectarAncho() {
+            var ancho = $(window).width();
+            var anchoMenu = $('.contenedor-menu').css('width');
+            if (ancho <= 768) {
+                $('.contenedor-menu').css('display', 'none');
+                $('.contenedor-principal').css('padding-left', '0');
+            } else {
+                $('.contenedor-menu').css('display', 'block');
+                if (anchoMenu == '60px') {
+                    $('.contenedor-principal').css('padding-left', '60px');
+                } else {
+                    $('.contenedor-principal').css('padding-left', '260px');
+                }
+            }
+        }
+
+        $(window).resize(function () {
+            detectarAncho();
+        });
+    </script>
+
+
+
+    @RenderSection("Scripts", required: false)
+</body>
+</html>

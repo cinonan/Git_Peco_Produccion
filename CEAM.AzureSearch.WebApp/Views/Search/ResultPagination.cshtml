@@ -1,0 +1,113 @@
+﻿@model AzureSearch.Models.Publico.Models.SearchDataModel
+
+@{
+    // -----------------------------------------------------------------------
+    // LÓGICA DE LÍMITE DE PÁGINAS (Backend en la Vista)
+    // -----------------------------------------------------------------------
+    // Definimos un conteo de páginas efectivo.
+    // Si es híbrida y tiene > 1000 resultados, limitamos a un máximo de 84 páginas.
+    // En cualquier otro caso, usamos el PageCount real del modelo.
+    long effectivePageCount = Model.Pagination.PageCount;
+    if (Model.Pagination.IsHybridPagination && Model.Results.TotalCount > 1000)
+    {
+        // Math.Min asegura que si por alguna razón rara hay menos de 84, no forcemos 84.
+        effectivePageCount = Math.Min(84, Model.Pagination.PageCount);
+    }
+}
+
+<div class="row my-2">
+    <div class="col-md-6">
+        @if (Model.Results.TotalCount > 0)
+        {
+            <p>
+                @* -----------------------------------------------------------------------
+                   LÓGICA DE MENSAJE DE CONTEO
+                   ----------------------------------------------------------------------- *@
+                @if (Model.Pagination.IsHybridPagination && Model.Results.TotalCount > 1000)
+                {
+                    <span>Se han encontrado <strong>m&aacute;s de 1,000</strong> fichas-producto,</span>
+                }
+                else
+                {
+                    <span>Se han encontrado <strong>@String.Format("{0:###,###,###}", Model.Results.TotalCount)</strong> fichas-producto,</span>
+                }
+                descarga los resultados <a href="#" class="btn-download text-purple text-bold">aqu&iacute;</a>
+            </p>
+        }
+        else
+        {
+            <p>No se han encontrado fichas-producto</p>
+        }
+    </div>
+    <div class="col-md-6">
+        @* Usamos effectivePageCount en lugar de Model.Pagination.PageCount para decidir si mostrar paginación *@
+        @if (Model != null && effectivePageCount > 1)
+        {
+            <div class="btn-toolbar" role="toolbar" aria-label="" style="justify-content: flex-end;">
+                @* GRUPO 1: IR AL INICIO (|<) *@
+                <div class="btn-group btn-group-sm mr-2" role="group" aria-label="First group">
+                    @if (Model.Pagination.CurrentPage > 0)
+                    {
+                        <button type="button" class="btn btn-secondary bg-purple text-white btn-paging" data-paging="0">|&lt;</button>
+                    }
+                    else
+                    {
+                        <button type="button" class="btn bg-purple-05 text-gray-05 disabled">|&lt;</button>
+                    }
+                </div>
+
+                @* GRUPO 2: ANTERIOR (<) Y NÚMEROS DE PÁGINA *@
+                <div class="btn-group btn-group-sm mr-2" role="group" aria-label="Second group">
+                    @if (Model.Pagination.CurrentPage > 0)
+                    {
+                        <button type="button" class="btn btn-secondary bg-purple text-white btn-paging" data-paging="prev">&lt;</button>
+                    }
+                    else
+                    {
+                        <button type="button" class="btn bg-purple-05 text-gray-05 disabled">&lt;</button>
+                    }
+
+                    @* Bucle de páginas: Aseguramos que no se pase del effectivePageCount *@
+                    @for (var pn = Model.Pagination.LeftMostPage; pn < Model.Pagination.LeftMostPage + Model.Pagination.PageRange; pn++)
+                    {
+                        // Solo mostramos si la página está dentro del límite efectivo
+                        if (pn < effectivePageCount)
+                        {
+                            if (Model.Pagination.CurrentPage == pn)
+                            {
+                                <button type="button" class="btn bg-white text-purple ">@(pn + 1)</button>
+                            }
+                            else
+                            {
+                                <button type="button" class="btn bg-purple text-white btn-paging" data-paging="@pn">@(pn + 1)</button>
+                            }
+                        }
+                    }
+
+                    @* Botón Siguiente (>): Usamos effectivePageCount para saber si hay más *@
+                    @if (Model.Pagination.CurrentPage < effectivePageCount - 1)
+                    {
+                        <button type="button" class="btn bg-purple text-white btn-paging" data-paging="next">&gt;</button>
+                    }
+                    else
+                    {
+                        <button type="button" class="btn bg-purple-05 text-gray-05 disabled">&gt;</button>
+                    }
+                </div>
+
+                @* GRUPO 3: IR AL FINAL (>|) *@
+                <div class="btn-group btn-group-sm" role="group" aria-label="Third group">
+                    @* Usamos effectivePageCount para definir cuál es la última página *@
+                    @if (Model.Pagination.CurrentPage < effectivePageCount - 1)
+                    {
+                        <button type="button" class="btn btn-secondary bg-purple text-white btn-paging" data-paging="@(effectivePageCount - 1)">&gt;|</button>
+                    }
+                    else
+                    {
+                        <button type="button" class="btn bg-purple-05 text-gray-05 disabled">&gt;|</button>
+                    }
+                </div>
+            </div>
+        }
+    </div>
+</div>

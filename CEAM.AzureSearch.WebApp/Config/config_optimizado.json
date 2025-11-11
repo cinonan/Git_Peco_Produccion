@@ -1,0 +1,65 @@
+{
+  "config_version": "2025-09-25",
+  "locale": "es-PE",
+
+  "text_normalization": {
+    "lowercase": true,
+    "collapse_spaces": true,
+    "strip_accents": false,
+    "replace_underscores_with_space": true,
+    "remove_prefix_to_colon": true,
+    "remove_stopwords_in_query": true,
+    "stopwords_query": [ "con","de", "del", "y", "o", "la", "el", "los", "las", "en", "para", "por", "a", "un", "una", "uno", "al" ],
+    "preserve_terms": [ "sin", "no" ]
+  },
+
+  "units": {
+    "memory": {
+      "canonical_unit": "gb",
+      "aliases": { "gb": ["gb", "gib", "gigas", "gigabytes"], "mb": ["mb", "mib"] }
+    },
+    "storage": {
+      "canonical_unit_large": "tb",
+      "canonical_unit_small": "gb",
+      "aliases": {
+        "tb": ["tb", "tib", "tera", "terabytes"],
+        "gb": ["gb", "gib", "gigas", "gigabytes"]
+      }
+    },
+    "screen_size_inches": ["\"", "pulgadas", "pulg", "in"],
+    "weight": { "kg": ["kg"], "g": ["g", "gramos"], "lb": ["lb", "lbs"] }
+  },
+
+  "synonyms": {
+    "category": {
+      "computadora de escritorio": [ "pc de escritorio", "desktop" ],
+      "computadora portatil": [ "laptop", "notebook", "portatil", "equipo portatil", "computadora portátil", "computador portátil" ]
+    },
+    "featuretype": {
+      "conectividad wlan": [ "wifi", "wi-fi", "wlan" ],
+      "conectividad lan": [ "ethernet", "rj45", "lan" ],
+      "video hdmi": [ "video hdmi", "hdmi" ],
+      "video vga": [ "video vga", "vga" ],
+      "cámara web": [ "camara", "camara web", "webcam" ],
+      "unidad optica": [ "unidad óptica", "lectora dvd", "dvd", "cd/dvd" ],
+      "suite ofimatica": [ "ofimatica", "office", "libreoffice", "suite" ],
+      "ram": [ "memoria" ],
+      "pantalla": [ "pantalla" ],
+      "procesador": [ "cpu", "microprocesador" ]
+    },
+    "values": {
+      "intel core i9": [ "intel core i9", "core i9", "i9", "intel i9" ],
+      "intel core i7": [ "intel core i7", "core i7", "i7", "intel i7" ],
+      "intel core i5": [ "intel core i5", "core i5", "i5", "intel i5" ],
+      "intel core i3": [ "intel core i3", "core i3", "i3", "intel i3" ],
+      "32 gb": [ "32gb", "32 gigas", "32 g" ],
+      "16 gb": [ "16gb", "16 gigas", "16 g" ],
+      "8 gb": [ "8gb", "8 gigas", "8 g" ],
+      "1 tb": [ "1tb", "1 tera" ],
+      "512 gb": [ "512gb", "512 gigas" ],
+      "14.0": [ "14 pulgadas", "14 pulg", "14in", "14 in" ],
+      "15.6": [ "15.6 pulgadas", "15.6 pulg", "15.6in", "15.6 in" ]
+    }
+  }
+
+}

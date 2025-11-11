@@ -1,0 +1,136 @@
+﻿@model AzureSearch.Models.Publico.Models.SearchDataModel
+
+    <div id="result-data">
+        <partial name="~/Views/Search/ResultData.cshtml" model="Model" />
+    </div>
+
+    @section Scripts {
+
+        <script type="text/javascript">
+        $(document).ready(function () {
+            $('#cover-spin').hide();
+            $('[data-toggle="tooltip"]').tooltip()
+
+            function GetAgreements() {
+                $('#ClientFilter_Agreement').val("[]");
+                let agreements = [];
+                $('.agreement-chk:checkbox:checked').each(function () {
+                    agreements.push($(this).data('filter'));
+                });
+
+                $('#ClientFilter_Agreement').val(JSON.stringify(agreements));
+            }
+
+            function GetCatalogues() {
+                $('#ClientFilter_Catalogue').val("[]");
+                let catalogues = [];
+                $('.catalogue-chk:checkbox:checked').each(function () {
+                    catalogues.push($(this).data('filter'));
+                });
+
+                $('#ClientFilter_Catalogue').val(JSON.stringify(catalogues));
+            }
+
+            function GetCategories() {
+                $('#ClientFilter_Category').val("[]");
+                let categories = [];
+                $('.category-chk:checkbox:checked').each(function () {
+                    categories.push($(this).data('filter'));
+                });
+
+                $('#ClientFilter_Category').val(JSON.stringify(categories));
+            }
+
+            function GetFeatures() {
+                $('#ClientFilter_Feature').val("[]");
+                let features = [];
+                $('.feature-chk:checkbox:checked').each(function () {
+                    features.push($(this).data('filter'));
+                });
+
+                $('#ClientFilter_Feature').val(JSON.stringify(features));
+            }
+
+            function GetDepartments() {
+                $('#ClientFilter_Department').val("[]");
+                let departments = [];
+                $('.department-chk:checkbox:checked').each(function () {
+                    departments.push($(this).data('filter'));
+                });
+
+                $('#ClientFilter_Department').val(JSON.stringify(departments));
+            }
+
+            function Search() {
+                GetAgreements();
+                GetCatalogues();
+                GetCategories();
+                GetFeatures();
+                GetDepartments();
+                $('#IsNewSearch').val('False');
+                document.getElementById('form-search').action = "@Url.Action("Search","Search")";
+                $('.btn-submit').click();
+            }
+
+            $(document).on('change', '.agreement-chk:checkbox', function () { $('#Pagination_Paging').val('0'); Search(); });
+            $(document).on('change', '.catalogue-chk:checkbox', function () { $('#Pagination_Paging').val('0'); Search(); });
+            $(document).on('change', '.category-chk:checkbox', function () { $('#Pagination_Paging').val('0'); Search(); });
+            $(document).on('change', '.feature-chk:checkbox', function () { $('#Pagination_Paging').val('0'); Search(); });
+            $(document).on('change', '.department-chk:checkbox', function () { $('#Pagination_Paging').val('0'); Search(); });
+
+            $(document).on('click', '.btn-download', function () {
+                document.getElementById('form-search').action = "@Url.Action("Download","Search")";
+                document.getElementById('form-search').submit();
+            });
+
+            $(document).on('click', '.btn-paging', function () {
+                $('#Pagination_Paging').val($(this).data('paging'));
+                Search();
+            });
+
+            $(document).on('click', '.expand-collapse', function () {
+                var texto = $(this).text().trim();
+                var featureType = $(this).data('feature-type-key');
+
+                if (texto == 'Ver todos') {
+                    $(this).text('Ver menos');
+                    $('li.nav-item').find(`[data-feature-type='${featureType}']`).css('display','block');
+                } else {
+                    $(this).text('Ver todos');
+                    $('li.nav-item').find(`[data-feature-type='${featureType}']`).css('display','none');
+                }
+            });
+
+
+            $(document).on('click', '.btn-submit', function () {
+                document.getElementById('form-search').action = "@Url.Action("Search","Search")";
+                $('#cover-spin').show(0);
+                event.preventDefault();
+
+                var form = $('#form-search')[0];
+                var formData = new FormData(form);
+                $('.btn-submit').prop("disabled", true);
+
+                $.ajax({
+                    type: "POST",
+                    url: "@Url.Action("Search","Search")",
+                    data: formData,
+                    processData: false,
+                    contentType: false,
+                    cache: false,
+                    timeout: 800000,
+                    success: function (response) {
+                        $('#result-data').html(response);
+                    },
+                    error: function (e) {
+                        console.log("ERROR : ", e);
+                    },
+                    complete: function () {
+                        $('#cover-spin').hide();
+                        $('.btn-submit').prop("disabled", false);
+                    }
+                });
+            });
+        });
+        </script>
+    }
