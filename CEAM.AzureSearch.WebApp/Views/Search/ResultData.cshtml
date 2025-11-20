@@ -1,0 +1,315 @@
+﻿@model AzureSearch.Models.Publico.Models.SearchDataModel
+
+
+<aside class="main-sidebar elevation-1 sidebar-no-expand">
+    <div class="sidebar">
+        <div class="user-panel mt-2 pb-3 mb-3 pl-0 d-flex">
+            <img class="logo" src="~/images/logo_PeruCompras.svg" alt="" loading="lazy">
+        </div>
+        <partial name="~/Views/Search/ResultFilter.cshtml" model="Model" />
+    </div>
+</aside>
+
+<div class="content-wrapper bg-white px-3">
+    <div class="content-header">
+        <div class="container-fluid">
+            <div class="row">
+                <div class="col-sm-12">
+                    <ol class="breadcrumb float-sm-right">
+                        <li class="breadcrumb-item"><a href="https://www.perucompras.gob.pe">CEAM</a></li>
+                        <li class="breadcrumb-item active"><a href="@Url.Action("Index", "Search")">Buscador Público</a></li>
+                    </ol>
+                </div>
+            </div>
+
+            <div class="row">
+                <div class="col-md-12 mt-3">
+                    <form asp-action="Index" asp-controller="Search" method="POST" id="form-search">
+                        <input type="hidden" asp-for="DownloadId" name="DownloadId" />
+                        <input type="hidden" asp-for="IsDownload" name="IsDownload" />
+                        <input type="hidden" asp-for="From" name="From" />
+                        <input type="hidden" asp-for="IsNewSearch" name="IsNewSearch" />
+                        <input type="hidden" asp-for="SearchTextPrevious" name="SearchTextPrevious" />
+                        <input type="hidden" asp-for="Status" />
+
+                        <input type="hidden" asp-for="Pagination.Page" name="Pagination.Page" />
+                        <input type="hidden" asp-for="Pagination.Paging" name="Pagination.Paging" />
+                        <input type="hidden" asp-for="Pagination.LeftMostPage" name="Pagination.LeftMostPage" />
+
+                        <input type="hidden" asp-for="ClientFilter.Agreement" name="ClientFilter.Agreement" />
+                        <input type="hidden" asp-for="ClientFilter.Catalogue" name="ClientFilter.Catalogue" />
+                        <input type="hidden" asp-for="ClientFilter.Category" name="ClientFilter.Category" />
+                        <input type="hidden" asp-for="ClientFilter.Feature" name="ClientFilter.Feature" />
+                        <input type="hidden" asp-for="ClientFilter.Department" name="ClientFilter.Department" />
+
+                        <input type="hidden" asp-for="ServerFilter.Agreement" name="ServerFilter.Agreement" />
+                        <input type="hidden" asp-for="ServerFilter.Catalogue" name="ServerFilter.Catalogue" />
+                        <input type="hidden" asp-for="ServerFilter.Category" name="ServerFilter.Category" />
+                        <input type="hidden" asp-for="ServerFilter.Feature" name="ServerFilter.Feature" />
+                        <input type="hidden" asp-for="ServerFilter.Department" name="ServerFilter.Department" />
+
+                        <div class="input-group">
+                            <input type="text" class="form-control" placeholder="Buscar" asp-for="SearchText" name="SearchText" autocomplete="off">
+                            <span class="input-group-append">
+                                <button type="button" class="btn bg-purple btn-submit">
+                                    <i class="fas fa-search"></i>
+                                </button>
+                            </span>
+                        </div>
+
+                        <div id="alert-error" class="alert alert-danger mt-1" role="alert" style="display: none;">
+                            Debe ingresar solo letras, números, puntos y guiones.
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+            <div class="row">
+                <div class="col-12 mt-3 mb-2">
+                    <hr>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    @if (Model != null && Model.Results != null && Model.Results.TotalCount > 0)
+    {
+        <div class="content">
+            <div class="container-fluid">
+                <partial name="~/Views/Search/ResultPagination.cshtml" model="Model" />
+
+                @{
+                    var list = @Model.Results.GetResults().ToList();
+                }
+
+                <div class="row my-3">
+                    @for (var item = 0; item <= list.Count - 1; item++)
+                    {
+                        <div class="col-sm-6 col-md-3 col-lg-3">
+                            <div class="card">
+                                <div class="card-header bg-purple">
+
+                                    <h4 class="card-title card-title-custom">
+                                        @list[item].Document.Category.Name : @list[item].Document.FeatureTypeList.Where(s => s.Text.ToUpper() == "MARCA").Select(s => s.Values.FirstOrDefault().Text).FirstOrDefault() @list[item].Document.FeatureTypeList.Where(s => s.Text.ToUpper() == "MODELO").Select(s => s.Values.FirstOrDefault().Text).FirstOrDefault()
+                                    </h4>
+                                    <h5 class="card-title color-blanco">
+                                        <b> @ExtractValueAfter(list[item].Document.Name) </b>
+                                    </h5>
+
+
+                                </div>
+                                <div class="card-body panel-imagen">
+                                    <img data-src="@Model.ImageUrl@list[item].Document.Image" loading="lazy" alt="" class="lazyload" />
+                                </div>
+                                <div class="card-footer">
+
+                                    @{
+                                        var filteredValues = list[item].Document.FeatureTypeList
+                                            .Where(featureType => featureType.Values.Any(value => !value.FeatureType.Equals("RESERVADA")))
+                                            .Select(s => $"{s.Text.Replace('_', ' ')}: {string.Join(", ", s.Values.Select(v => v.Text))}.")
+                                            .ToArray();
+                                    }
+
+                                    <a id="@list[item].Document.Id"
+                                       class="enlace-detalles color-morado"
+                                       onclick="ShowModal('#@list[item].Document.Id')"
+                                       data-img="@Model.ImageUrl@list[item].Document.Image"
+                                       data-file="@Model.FileUrl@list[item].Document.File"
+                                       data-agreement="@list[item].Document.Agreement.Name"
+                                       data-catalogue="@list[item].Document.Catalogue.Name"
+                                       data-category="@list[item].Document.Category.Name"
+                                       data-fp="@list[item].Document.Name"
+                                       data-published-date="Fecha de publicación: @list[item].Document.PublishedDate"
+                                       data-updated-date="Fecha de último estado: @list[item].Document.UpdatedDate"
+                                       data-status="@list[item].Document.Status"
+                                       @*data-feature="@filteredValues">DETALLE</a>*@
+                                       data-feature="<li class='col-6' style='padding-right: 20px; padding-left: 0px;'>@string.Join("</li><li class='col-6' style='padding-right: 20px; padding-left: 0px;'>", filteredValues)</li>">Detalles</a>
+
+                                    <div class="card-tools float-right">
+                                        <a href="@Model.FileUrl@list[item].Document.File" target="_blank">
+                                            <i class="fas fa-download color-morado" data-toggle="tooltip" data-placement="top" title="Especificación técnica"></i>
+                                        </a>
+
+                                        @if (list[item].Document.Status == "OFERTADA")
+                                        {
+                                            <i class="fas fa-check-circle pl-2" style="color:#43A047;" data-toggle="tooltip" data-placement="top" title="OFERTADA"></i>
+                                            <span style="color:#43A047;">OFERTADA</span>
+                                        }
+                                        else if (list[item].Document.Status == "SUSPENDIDA")
+                                        {
+                                            <i class="fas fa-check-circle pl-2" style="color:#616161;" data-toggle="tooltip" data-placement="top" title="SUSPENDIDA"></i>
+                                            <span style="color:#616161;">SUSPENDIDA</span>
+                                        }
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    }
+                </div>
+
+                <partial name="~/Views/Search/ResultPagination.cshtml" model="Model" />
+            </div>
+        </div>
+    }
+    else
+    {
+        <div class="content">
+            <div class="container-fluid">
+                <div class="row my-3">
+                    <div class="col-md-6">
+                        <p>No se han encontrado fichas-producto.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+@functions {
+    /**
+     * Extrae un valor que sigue a una palabra clave y termina antes de una coma.
+     */
+    public static string ExtractValueAfter(string description)
+    {
+        if (string.IsNullOrEmpty(description))
+        {
+            return "";
+        }
+
+        // Lista de keywords que buscamos (en mayúsculas)
+        var keywords = new[] {
+            "NRO PARTE",
+            "CODIGO DE IDENTIFICACION UNICO"
+        };
+
+        string descUpper = description.ToUpper();
+        string foundKeyword = null;
+        int keywordIndex = -1;
+
+        // 1. Encontrar si existe una keyword y su posición
+        foreach (var key in keywords)
+        {
+            int idx = descUpper.IndexOf(key);
+            if (idx != -1)
+            {
+                keywordIndex = idx;
+                foundKeyword = key;
+                break; // Detenerse en la primera que se encuentre
+            }
+        }
+
+        // Si no se encontró, no devolver nada
+        if (keywordIndex == -1)
+        {
+            return "";
+        }
+
+        // 2. Encontrar dónde empieza el valor (después de la keyword)
+        int valueStartIndex = keywordIndex + foundKeyword.Length;
+
+        // 3. Saltar caracteres separadores (como ':', '-', o espacios)
+        while (valueStartIndex < description.Length && !char.IsLetterOrDigit(description[valueStartIndex]))
+        {
+            valueStartIndex++;
+        }
+
+        // Si llegamos al final, no había valor
+        if (valueStartIndex == description.Length)
+        {
+            return "";
+        }
+
+        // 4. (AJUSTADO) Encontrar dónde termina el valor (buscando la próxima coma)
+        int valueEndIndex = description.IndexOf(',', valueStartIndex);
+
+        // Si no se encontró una coma, el valor no sigue la regla.
+        if (valueEndIndex == -1)
+        {
+            return ""; // Ser estricto con la regla "termina antes de una coma"
+        }
+
+        // 5. (AJUSTADO) Extraer y limpiar el valor (Substring extrae HASTA valueEndIndex)
+        string extractedValue = description.Substring(valueStartIndex, valueEndIndex - valueStartIndex).Trim();
+
+        return extractedValue.ToUpper();
+    }
+}
+
+<script type="text/javascript">
+    function regexSearchText(str) {
+        var regex = new RegExp("^[0-9a-zA-ZñÑäÄëËïÏöÖüÜáéíóúáéíóúÁÉÍÓÚÂÊÎÔÛâêîôûàèìòùÀÈÌÒÙ _.-]+$");
+        return regex.test(str);
+    }
+
+    //document.querySelector('.btn-submit').addEventListener('click', function (e) {
+    //    let searchText = document.getElementById('SearchText').value;
+    //    if (searchText.trim() == "" || regexSearchText(searchText)) {
+    //        document.getElementById('alert-error').style.display = 'none';
+    //        document.getElementById('cover-spin').style.display = 'block';
+    //        document.getElementById('form-search').submit();
+    //    }
+    //    else {
+    //        document.getElementById('alert-error').style.display = 'block';
+    //    }
+    //}, false);
+
+    function ClearModal() {
+        $('#fp-text').html('');
+        $('#category-text').html('');
+        $('#catalogue-text').html('');
+        $('#agreement-text').html('');
+        $('#feature-text').html('');
+        $('#published-date-text').html('');
+        $('#updated-date-text').html('');
+        $('#status-ofertada').hide();
+        $('#status-suspendida').hide();
+    }
+
+    function ShowModal(fp) {
+        ClearModal();
+        var img = $(fp).data('img');
+        var file = $(fp).data('file');
+        var fpText = $(fp).data('fp');
+        var categoryText = $(fp).data('category');
+        var catalogueText = $(fp).data('catalogue');
+        var agreementText = $(fp).data('agreement');
+        var featureText = $(fp).data('feature');
+        var statusText = $(fp).data('status');
+        var publishedDateText = $(fp).data('published-date');
+        var updatedDateText = $(fp).data('updated-date');
+
+        $('#fp-img').attr('src', img);
+        $('#fp-file').attr('href', file);
+        $('#fp-text').html(fpText);
+        $('#category-text').html(categoryText);
+        $('#catalogue-text').html(catalogueText);
+        $('#agreement-text').html(agreementText);
+        $('#feature-text').html(featureText);
+        $('#published-date-text').html(publishedDateText);
+        $('#updated-date-text').html(updatedDateText);
+
+        if (statusText == "OFERTADA") {
+            $('#status-ofertada').show();
+        } else if (statusText == "SUSPENDIDA") {
+            $('#status-suspendida').show();
+        }
+
+        $('#modalFP').modal('show');
+    }
+
+    if ('loading' in HTMLImageElement.prototype) {
+        // Si el navegador soporta lazy-load, tomamos todas las imágenes que tienen la clase
+        // `lazyload`, obtenemos el valor de su atributo `data-src` y lo inyectamos en el `src`.
+        const images = document.querySelectorAll("img.lazyload");
+        images.forEach(img => {
+            img.src = img.dataset.src;
+        });
+    } else {
+        // Importamos dinámicamente la libreria `lazysizes`
+        let script = document.createElement("script");
+        script.async = true;
+        script.src = "https://cdnjs.cloudflare.com/ajax/libs/lazysizes/5.2.0/lazysizes.min.js";
+        document.body.appendChild(script);
+    }
+</script>

@@ -1,0 +1,271 @@
+﻿@{
+    Layout = "~/Views/Shared/azure-search-02/_LayoutSearch.cshtml";
+    ViewData["Title"] = "Page Title";
+}
+@model AzureSearch.Models.Publico.Models.SearchDataModel
+
+<style>
+
+    ul.list-unstyled {
+        /*padding-left: 20px;*/
+        list-style: none;
+    }
+
+        ul.list-unstyled li {
+            padding: 15px;
+        }
+
+            ul.list-unstyled li::before {
+                content: "\f058";
+                font-family: "Font Awesome 5 Free";
+                /*margin: 0 5px 0 -15px;*/
+            }
+
+
+    /*.border-left-purple {
+            border-left: 5px solid #a393c6 !important;
+        }
+
+        .callout:hover {
+            background-color: #a393c6;
+            color: #ffffff;
+        }*/
+</style>
+
+<div class="content-wrapper bg-white px-3">
+    <!-- Content Header (Page header) -->
+    <div class="content-header">
+        <div class="container">
+            <div class="row">
+                @*<div class="col-sm-6">
+                        <img src="https://www.perucompras.gob.pe/imagenes/logo/logo.svg" style="width: 6rem;" alt="" loading="lazy">
+                    </div>*@
+                <div class="col-sm-12">
+                    <ol class="breadcrumb float-sm-right">
+                        <li class="breadcrumb-item"><a href="https://www.perucompras.gob.pe">CEAM</a></li>
+                        <li class="breadcrumb-item active"><a href="#">Buscador Público</a></li>
+                    </ol>
+                </div>
+            </div><!-- /.row -->
+        </div><!-- /.container-fluid -->
+    </div>
+    <!-- /.content-header -->
+    <!-- Main content -->
+    <div class="content">
+        <div class="container">
+
+            <div class="row">
+                <div class="col-12 my-5 text-center">
+                    <img class="cuerpo-logo" src="~/images/logo_CE_PeruCompras.svg">
+                </div>
+            </div>
+            <div class="row">
+                <div class="col-md-8 offset-md-2">
+                    <form asp-action="Index" asp-controller="Search" method="post" id="form-search">
+                        <input type="hidden" asp-for="From" />
+                        <input type="hidden" asp-for="IsNewSearch" />
+                        <input type="hidden" asp-for="SearchTextPrevious" />
+                        <input type="hidden" asp-for="Status" />
+
+                        <input type="hidden" asp-for="Pagination.Page" />
+                        <input type="hidden" asp-for="Pagination.Paging" />
+                        <input type="hidden" asp-for="Pagination.LeftMostPage" />
+
+                        <input type="hidden" asp-for="ClientFilter.Agreement" />
+                        <input type="hidden" asp-for="ClientFilter.Catalogue" />
+                        <input type="hidden" asp-for="ClientFilter.Category" />
+                        <!-- Garantizar valor por defecto para evitar null en la vista/backend -->
+                        <input type="hidden" asp-for="ClientFilter.Feature" value='@((Model?.ClientFilter?.Feature) ?? "[]")' />
+
+                        <input type="hidden" asp-for="ServerFilter.Agreement" />
+                        <input type="hidden" asp-for="ServerFilter.Catalogue" />
+                        <input type="hidden" asp-for="ServerFilter.Category" />
+                        <!-- Mantener server filter serializado (fallback vacío si no hay) -->
+                        <input type="hidden" asp-for="ServerFilter.Feature" value='@((Model?.ServerFilter?.Feature) ?? "")' />
+
+                        <div class="input-group">
+                            <input type="text" class="form-control" placeholder="Buscar" asp-for="SearchText">
+                            <span class="input-group-append">
+                                <button type="button" class="btn bg-purple btn-submit">
+                                    <i class="fas fa-search"></i>
+                                </button>
+                            </span>
+                        </div>
+
+                        <div id="alert-error" class="alert alert-danger mt-1" role="alert" style="display:none;" autocomplete="off">
+                            Debe ingresar solo letras, números, puntos y guiones.
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+            <div class="row">
+                <div class="col-12 my-5">
+                    <hr>
+                </div>
+            </div>
+
+            <div class="row justify-content-md-center">
+                <div class="col-md-5 col-lg-4 input-group mb-5">
+                    <label class="subtitulo">Acuerdos Marco</label>
+                    <select id="cbo-status" class="combo form-control color-gris-5">
+                        <option value="VIGENTE" selected="">VIGENTES</option>
+                        <option value="NO VIGENTE">NO VIGENTES</option>
+                    </select>
+                </div>
+            </div>
+
+            @if (Model.AgreementFilter != null)
+            {
+                <div class="row agreements pb-5">
+                    @foreach (var item in Model.AgreementFilter[0].Items)
+                    {
+                        <div class="col-sm-6 col-md-4">
+                            <div class="lista-iconos fp-enlace" data-agreement="@item.Value">
+                                <img class="fp-icono" src="~/images/icons/@(@item.Id + ".svg")">
+                                <p class="fp-texto">
+                                    <span>@item.Id</span>
+                                    <br>
+                                    @{
+                                        var titulo = item.Text.Substring(0, 1) + item.Text.Substring(1).ToLower();
+                                    }
+                                    @titulo
+                                </p>
+                            </div>
+                        </div>
+                    }
+                </div>
+
+
+            }
+
+        </div><!-- /.container-fluid -->
+    </div>
+    <!-- /.content -->
+
+
+    <div id="divPopUpComunicadoBloqueado" class="modal fade" data-backdrop="static" role="dialog" aria-hidden="true" tabindex="-1" data-keyboard="false">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class='modal-header'>
+                    <button type='button' class='close' data-dismiss='modal' aria-hidden='true' id="btnCerrarMod">×</button>
+                </div>
+                <div class="modal-body" style="font-size: 20px;">
+                    <div class="panel panel-default text-justify">
+                        <div class="panel-body" style="background-color: #E0E0E0;font-family:Arial;font-size:15px;">
+                            <p class="text-justify">
+                                "Se recuerda que los datos que se registran o actualizan en la Plataforma de Catálogos Electrónicos</br> respecto a las Fichas producto se reflejan un día posterior en el buscador."
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+
+</div>
+
+<style>
+    .show {
+        transition: opacity 400ms;
+    }
+
+    .hide {
+        opacity: 0;
+    }
+</style>
+
+@section Scripts {
+    <script type="text/javascript">
+        $(document).ready(function () {
+            $('#divPopUpComunicadoBloqueado').modal("show");
+        });
+
+
+
+        document.getElementById('Status').value = 'VIGENTE';
+
+        function regexSearchText(str) {
+            var regex = new RegExp("^[0-9a-zA-ZñÑäÄëËïÏöÖüÜáéíóúáéíóúÁÉÍÓÚÂÊÎÔÛâêîôûàèìòùÀÈÌÒÙ _.-]+$");
+            return regex.test(str);
+        }
+
+        document.addEventListener('click', function (e) {
+            for (var target = e.target; target != this; target = target.parentNode) {
+                if (target.matches('.lista-iconos')) {
+                    document.getElementById('cover-spin').style.display = 'block';
+                    document.getElementById('ClientFilter_Agreement').value = '["' + target.dataset.agreement + '"]';
+                    // preservar cualquier ClientFilter.Feature ya presente en el formulario (no tocarla)
+                    document.getElementById('form-search').submit();
+                    break;
+                }
+            }
+        }, false);
+
+        document.querySelector('.btn-submit').addEventListener('click', function (e) {
+            let searchText = document.getElementById('SearchText').value;
+            if (searchText.trim() == "" || regexSearchText(searchText)) {
+                document.getElementById('alert-error').style.display = 'none';
+                let status = document.getElementById('cbo-status').value;
+                document.getElementById('Status').value = status;
+                document.getElementById('cover-spin').style.display = 'block';
+                document.getElementById('form-search').submit();
+            }
+            else {
+                document.getElementById('alert-error').style.display = 'block';
+            }
+        }, false);
+
+        document.getElementById('cbo-status').addEventListener('change', function (e) {
+            document.getElementById('Status').value = this.value;
+            document.getElementById('cover-spin').style.display = 'block';
+            var formData = new FormData();
+            formData.append('SearchText', this.value);
+
+            fetch('@Url.Action("SearchByAgreementStatus", "Search")', {
+                method: 'POST',
+                body: formData,
+            }).then(function (response) {
+                return response.text();
+            }).then(function (data) {
+                var arr = JSON.parse(data);
+                document.querySelector('.agreements').innerHTML = '';
+                arr.forEach(function (i) { addAgreement(i); });
+                document.getElementById('cover-spin').style.display = 'none';
+            }).catch(function (error) {
+                console.error(error);
+                document.getElementById('cover-spin').style.display = 'none';
+            });
+        });
+
+        function addAgreement(agreement) {
+            let html = '<div class="lista-iconos fp-enlace" data-agreement="' + agreement.value + '">';
+            html += '<img class="fp-icono" src="/images/icons/' + agreement.id + '.svg">';
+            html += '<p class="fp-texto"><span>' + agreement.id + '</span><br>' + agreement.text + '</p>';
+            html += '</div>';
+
+            let el = document.createElement('div');
+            el.className = 'col-sm-6 col-md-4';
+            el.innerHTML = html;
+            document.querySelector('.agreements').appendChild(el);
+        }
+    </script>
+
+    <script>
+        if ('loading' in HTMLImageElement.prototype) {
+            // Si el navegador soporta lazy-load, tomamos todas las imágenes que tienen la clase
+            // `lazyload`, obtenemos el valor de su atributo `data-src` y lo inyectamos en el `src`.
+            const images = document.querySelectorAll("img.lazyload");
+            images.forEach(img => {
+                img.src = img.dataset.src;
+            });
+        } else {
+            // Importamos dinámicamente la libreria `lazysizes`
+            let script = document.createElement("script");
+            script.async = true;
+            script.src = "https://cdnjs.cloudflare.com/ajax/libs/lazysizes/5.2.0/lazysizes.min.js";
+            document.body.appendChild(script);
+        }
+    </script>
+}
