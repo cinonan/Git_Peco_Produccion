@@ -583,13 +583,23 @@ namespace AzureSearch.DataApp.Publico.Processes
                     VectorSearch = new VectorSearch
                     {
                         Profiles =
-                {
-                    new VectorSearchProfile("my-vector-profile", "exhaustive-knn-algorithm")
-                },
+                        {
+                            new VectorSearchProfile("my-vector-profile", "exhaustive-knn-algorithm")
+                        },
                         Algorithms =
-                {
-                    new ExhaustiveKnnAlgorithmConfiguration("exhaustive-knn-algorithm")
-                }
+                        {
+                            new ExhaustiveKnnAlgorithmConfiguration("exhaustive-knn-algorithm")
+                        }
+                    },
+                    ScoringProfiles =
+                    {
+                        new ScoringProfile("BoostOfertadaProfile")
+                        {
+                            Functions =
+                            {
+                                new TagScoringFunction("Status", 10.0, new TagScoringParameters("statusTags"))
+                            }
+                        }
                     }
                 };
 

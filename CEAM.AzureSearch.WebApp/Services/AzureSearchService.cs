@@ -779,6 +779,9 @@ namespace CEAM.AzureSearch.WebApp.Services
             options.Facets.Add("Departments,count:100");
             options.Facets.Add("Features,count:10000");
 
+            options.ScoringProfile = "BoostOfertadaProfile";
+            options.ScoringParameters.Add("statusTags-OFERTADA");
+
             return options;
         }
         private async Task<(SearchResults<PublicoProductDocument> Results, bool IsHybrid)> RunKeywordSearchAsync(string query, string filters, int page, int? size = null)
