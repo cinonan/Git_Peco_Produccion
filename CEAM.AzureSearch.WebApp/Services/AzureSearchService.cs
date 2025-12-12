@@ -779,8 +779,8 @@ namespace CEAM.AzureSearch.WebApp.Services
             options.Facets.Add("Departments,count:100");
             options.Facets.Add("Features,count:10000");
 
-            options.ScoringProfile = "BoostOfertadaProfile";
-            options.ScoringParameters.Add("statusTags-OFERTADA");
+            options.OrderBy.Add("StatusSortOrder asc");
+            options.OrderBy.Add("search.score() desc");
 
             return options;
         }
