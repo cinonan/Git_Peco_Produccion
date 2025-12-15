@@ -386,7 +386,9 @@ namespace CEAM.AzureSearch.WebApp.Services
                 Type = x.Value.ToString().Split(StringHelper.Separator)[0],
                 Value = x.Value.ToString().Split(StringHelper.Separator)[1],
                 FeatureType = x.Value.ToString().Split(StringHelper.Separator)[2],
-            }).ToList()
+            })
+                .Where(x => x.FeatureType.Equals("GENERICA", StringComparison.OrdinalIgnoreCase) || x.FeatureType.Equals("REQUERIDA", StringComparison.OrdinalIgnoreCase))
+                .ToList()
                 .GroupBy(g => new { g.Type })
                 .OrderBy(o => o.Key.Type)
                 .Select(s => new FilterDataModel
@@ -405,7 +407,6 @@ namespace CEAM.AzureSearch.WebApp.Services
                                     FeatureType = n.FeatureType,
                                     IsChecked = ""
                                 })
-                                .Where(item => item.FeatureType.Equals("GENERICA") || item.FeatureType.Equals("REQUERIDA"))
                                 .ToList(),
                 })
                 .OrderBy(b1 => b1.Value)
