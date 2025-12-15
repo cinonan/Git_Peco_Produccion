@@ -420,7 +420,8 @@ namespace CEAM.AzureSearch.WebApp.Services
                     i.ShowFeature = (i.Items.Any(item => item.FeatureType.Equals("GENERICA", StringComparison.OrdinalIgnoreCase)) ? 1 : 0);
                 });
 
-                featureServerList = featureServerList.OrderByDescending(o => o.Count).ToList();
+                // Filtrar para mostrar solo los grupos que tengan ShowFeature == 1
+                featureServerList = featureServerList.Where(x => x.ShowFeature == 1).OrderByDescending(o => o.Count).ToList();
             }
 
             return featureServerList;
