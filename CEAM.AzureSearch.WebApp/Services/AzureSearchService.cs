@@ -1021,7 +1021,20 @@ namespace CEAM.AzureSearch.WebApp.Services
                 }
                 else
                 {
-                    result = await RunHybridSearchAsync(queryForBoth, filters, page, size, searchText);
+                    // 1. Ejecutar Keyword primero
+                    var keywordResult = await RunKeywordSearchAsync(queryForBoth, filters, page, size);
+
+                    // 2. Evaluar TotalCount
+                    if (keywordResult.Results.TotalCount > 1000)
+                    {
+                        // 3. Quedarse con Keyword
+                        result = keywordResult;
+                    }
+                    else
+                    {
+                        // 4. Ejecutar Híbrido (reemplazando el resultado anterior)
+                        result = await RunHybridSearchAsync(queryForBoth, filters, page, size, searchText);
+                    }
                 }
             }
             catch (Exception e)
