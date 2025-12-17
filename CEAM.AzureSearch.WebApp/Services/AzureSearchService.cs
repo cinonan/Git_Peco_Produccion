@@ -46,6 +46,9 @@ namespace CEAM.AzureSearch.WebApp.Services
 
         // ====== Añade este cache estático en tu clase (persistente por proceso) ======
         private static readonly ConcurrentDictionary<string, int> _kwSizeCache = new();
+        private enum SearchStrategy { Unknown, Keyword, Hybrid }
+        private static readonly ConcurrentDictionary<string, SearchStrategy> _strategyCache = new();
+
         private readonly HttpClient _http;
         private readonly IQueryNormalizer _normalizer;
         #endregion
@@ -1011,6 +1014,10 @@ namespace CEAM.AzureSearch.WebApp.Services
                 var canonicalQuery = _normalizer.Normalize(searchText);
                 var queryForBoth = canonicalQuery;
 
+                // --- CACHEO DE ESTRATEGIA (Server-Side) ---
+                // Calculamos un hash simple de la query normalizada para usarlo como key
+                string strategyKey = Convert.ToBase64String(SHA256.HashData(Encoding.UTF8.GetBytes(queryForBoth ?? "")));
+
                 if (string.IsNullOrWhiteSpace(queryForBoth) || queryForBoth.Length > 200)
                 {
                     result = await RunKeywordSearchAsync(queryForBoth, filters, page, size);
@@ -1021,19 +1028,38 @@ namespace CEAM.AzureSearch.WebApp.Services
                 }
                 else
                 {
-                    // 1. Ejecutar Keyword primero
-                    var keywordResult = await RunKeywordSearchAsync(queryForBoth, filters, page, size);
-
-                    // 2. Evaluar TotalCount
-                    if (keywordResult.Results.TotalCount > 1000)
+                    // Revisar si ya tenemos una estrategia guardada para este texto
+                    if (_strategyCache.TryGetValue(strategyKey, out SearchStrategy savedStrategy))
                     {
-                        // 3. Quedarse con Keyword
-                        result = keywordResult;
+                        if (savedStrategy == SearchStrategy.Keyword)
+                        {
+                            result = await RunKeywordSearchAsync(queryForBoth, filters, page, size);
+                        }
+                        else if (savedStrategy == SearchStrategy.Hybrid)
+                        {
+                            result = await RunHybridSearchAsync(queryForBoth, filters, page, size, searchText);
+                        }
                     }
                     else
                     {
-                        // 4. Ejecutar Híbrido (reemplazando el resultado anterior)
-                        result = await RunHybridSearchAsync(queryForBoth, filters, page, size, searchText);
+                        // Si no hay estrategia en cache, ejecutamos la lógica de decisión
+
+                        // 1. Ejecutar Keyword primero
+                        var keywordResult = await RunKeywordSearchAsync(queryForBoth, filters, page, size);
+
+                        // 2. Evaluar TotalCount
+                        if (keywordResult.Results.TotalCount > 1000)
+                        {
+                            // 3. Quedarse con Keyword y guardar decisión
+                            result = keywordResult;
+                            _strategyCache[strategyKey] = SearchStrategy.Keyword;
+                        }
+                        else
+                        {
+                            // 4. Ejecutar Híbrido y guardar decisión
+                            result = await RunHybridSearchAsync(queryForBoth, filters, page, size, searchText);
+                            _strategyCache[strategyKey] = SearchStrategy.Hybrid;
+                        }
                     }
                 }
             }
