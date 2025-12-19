@@ -546,13 +546,7 @@ namespace AzureSearch.DataApp.Publico.Processes
                            new SimpleField(nameof(PublicoAgreementDocument.Name), SearchFieldDataType.String) { IsFilterable = true, IsFacetable = true },
                            new SimpleField(nameof(PublicoAgreementDocument.Status), SearchFieldDataType.String) { IsFilterable = true, IsFacetable = true },
                            new SimpleField(nameof(PublicoAgreementDocument.ContentHash), SearchFieldDataType.String) { IsFilterable = true},
-                           new SearchField(nameof(PublicoAgreementDocument.SearchText), SearchFieldDataType.String)
-                           {
-                               IsSearchable = true,
-                               AnalyzerName = LexicalAnalyzerName.Values.EsLucene,
-                               IsFilterable = true,
-                               IsFacetable = true
-                           }
+                           new SimpleField(nameof(PublicoAgreementDocument.SearchText), SearchFieldDataType.String) { IsFilterable = true, IsFacetable = true }
                        }
                    },
 
