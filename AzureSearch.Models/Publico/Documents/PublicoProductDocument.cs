@@ -31,6 +31,9 @@ namespace AzureSearch.Models.Publico.Documents
         [SimpleField(IsFilterable = true, IsFacetable = true)]
         public string Status { get; set; }
 
+        [SimpleField(IsSortable = true, IsFilterable = true)]
+        public int StatusSortOrder { get; set; }
+
         [SimpleField(IsFilterable = true, IsFacetable = true)]
         public string[] Departments { get; set; }
 

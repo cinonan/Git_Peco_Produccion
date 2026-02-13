@@ -46,6 +46,9 @@ namespace CEAM.AzureSearch.WebApp.Services
 
         // ====== Añade este cache estático en tu clase (persistente por proceso) ======
         private static readonly ConcurrentDictionary<string, int> _kwSizeCache = new();
+        private enum SearchStrategy { Unknown, Keyword, Hybrid }
+        private static readonly ConcurrentDictionary<string, SearchStrategy> _strategyCache = new();
+
         private readonly HttpClient _http;
         private readonly IQueryNormalizer _normalizer;
         #endregion
@@ -309,33 +312,7 @@ namespace CEAM.AzureSearch.WebApp.Services
 
         private void GetServerFilterAgreement(ref SearchDataModel model)
         {
-            List<FilterDataModel> masterAgreementList;
-
-            // Determinar si se debe crear una nueva lista maestra o usar la existente.
-            if (model.IsNewSearch || string.IsNullOrWhiteSpace(model.ServerFilter.Agreement))
-            {
-                masterAgreementList = GetServerAgreement(model) ?? new List<FilterDataModel>();
-            }
-            else
-            {
-                try
-                {
-                    masterAgreementList = JsonSerializer.Deserialize<List<FilterDataModel>>(model.ServerFilter.Agreement) ?? new List<FilterDataModel>();
-                }
-                catch
-                {
-                    masterAgreementList = GetServerAgreement(model) ?? new List<FilterDataModel>();
-                }
-            }
-
-            // Obtener los resultados de facetas "frescos" para actualizar contadores.
-            var freshFacets = GetServerAgreement(model) ?? new List<FilterDataModel>();
-            var freshCountsLookup = freshFacets
-                .SelectMany(g => g.Items ?? Enumerable.Empty<FilterItemModel>())
-                .Where(i => i != null && !string.IsNullOrWhiteSpace(i.Value))
-                .ToDictionary(i => i.Value, i => i.Count, StringComparer.OrdinalIgnoreCase);
-
-            // Obtener la lista de filtros seleccionados por el cliente.
+            // Obtener la lista de filtros seleccionados por el cliente para marcar los 'checked'.
             var clientAgreementList = new List<string>();
             if (!string.IsNullOrWhiteSpace(model.ClientFilter.Agreement))
             {
@@ -343,8 +320,10 @@ namespace CEAM.AzureSearch.WebApp.Services
                 catch { clientAgreementList = new List<string>(); }
             }
 
-            // Iterar sobre la lista maestra para actualizar contadores y estado.
-            foreach (var group in masterAgreementList)
+            // Obtener las facetas directamente de la respuesta de búsqueda actual.
+            var agreementList = GetServerAgreement(model) ?? new List<FilterDataModel>();
+
+            foreach (var group in agreementList)
             {
                 if (group?.Items == null) continue;
 
@@ -352,26 +331,16 @@ namespace CEAM.AzureSearch.WebApp.Services
                 {
                     if (item == null || string.IsNullOrWhiteSpace(item.Value)) continue;
 
-                    // Actualizar contador.
-                    item.Count = freshCountsLookup.TryGetValue(item.Value, out var newCount) ? newCount : 0;
-                    var displayText = item.Value.Substring(item.Value.IndexOf(StringHelper.Separator) + 1);
-                    item.Text = $"{displayText} ({item.Count})";
-
-                    // Marcar como seleccionado.
+                    // Marcar como seleccionado si está en la lista del cliente.
                     item.IsChecked = clientAgreementList.Contains(item.Value) ? "checked" : "";
                 }
 
-                // Recalcular contadores de grupo y estado.
-                // El recuento del grupo ahora refleja el número total de opciones, no las que coinciden con la búsqueda.
-                var totalOptionsCount = group.Items.Count();
-                group.Count = totalOptionsCount;
-                group.Text = $"{group.Value} ({group.Count})";
+                // Ajustar estado visual del grupo (abierto si tiene selección).
                 group.IsChecked = group.Items.Any(i => i.IsChecked == "checked") ? "menu-open" : "";
             }
 
-            // Asignar y persistir la lista maestra actualizada.
-            model.AgreementFilter = masterAgreementList;
-            model.ServerFilter.Agreement = JsonSerializer.Serialize(masterAgreementList);
+            model.AgreementFilter = agreementList;
+            model.ServerFilter.Agreement = ""; // Ya no se serializa la lista maestra.
         }
 
         private List<FilterDataModel> GetServerFeature(SearchDataModel model)
@@ -386,7 +355,9 @@ namespace CEAM.AzureSearch.WebApp.Services
                 Type = x.Value.ToString().Split(StringHelper.Separator)[0],
                 Value = x.Value.ToString().Split(StringHelper.Separator)[1],
                 FeatureType = x.Value.ToString().Split(StringHelper.Separator)[2],
-            }).ToList()
+            })
+                .Where(x => x.FeatureType.Equals("GENERICA", StringComparison.OrdinalIgnoreCase) || x.FeatureType.Equals("REQUERIDA", StringComparison.OrdinalIgnoreCase))
+                .ToList()
                 .GroupBy(g => new { g.Type })
                 .OrderBy(o => o.Key.Type)
                 .Select(s => new FilterDataModel
@@ -405,7 +376,7 @@ namespace CEAM.AzureSearch.WebApp.Services
                                     FeatureType = n.FeatureType,
                                     IsChecked = ""
                                 })
-                                .Where(item => item.FeatureType.Equals("GENERICA") || item.FeatureType.Equals("REQUERIDA"))
+                                .Where(item => item.FeatureType.Equals("GENERICA", StringComparison.OrdinalIgnoreCase))
                                 .ToList(),
                 })
                 .OrderBy(b1 => b1.Value)
@@ -427,35 +398,6 @@ namespace CEAM.AzureSearch.WebApp.Services
 
         private void GetServerFilterFeature(ref SearchDataModel model)
         {
-            List<FilterDataModel> masterFeatureList;
-
-            // Determinar si se debe crear una nueva lista maestra o usar la existente.
-            if (model.IsNewSearch || string.IsNullOrWhiteSpace(model.ServerFilter.Feature))
-            {
-                // Es una búsqueda nueva, se genera la lista completa desde los facets.
-                masterFeatureList = GetServerFeature(model) ?? new List<FilterDataModel>();
-            }
-            else
-            {
-                // Es una búsqueda por filtro, se reutiliza la lista maestra guardada.
-                try
-                {
-                    masterFeatureList = JsonSerializer.Deserialize<List<FilterDataModel>>(model.ServerFilter.Feature) ?? new List<FilterDataModel>();
-                }
-                catch
-                {
-                    // Fallback: si la deserialización falla, regenerar.
-                    masterFeatureList = GetServerFeature(model) ?? new List<FilterDataModel>();
-                }
-            }
-
-            // Obtener los resultados de facetas "frescos" para actualizar contadores.
-            var freshFacets = GetServerFeature(model) ?? new List<FilterDataModel>();
-            var freshCountsLookup = freshFacets
-                .SelectMany(g => g.Items ?? Enumerable.Empty<FilterItemModel>())
-                .Where(i => i != null && !string.IsNullOrWhiteSpace(i.Value))
-                .ToDictionary(i => i.Value, i => i.Count, StringComparer.OrdinalIgnoreCase);
-
             // Obtener la lista de filtros seleccionados por el cliente.
             var clientFeatureList = new List<string>();
             if (!string.IsNullOrWhiteSpace(model.ClientFilter?.Feature))
@@ -464,8 +406,10 @@ namespace CEAM.AzureSearch.WebApp.Services
                 catch { clientFeatureList = new List<string>(); }
             }
 
-            // Iterar sobre la lista maestra para actualizar contadores y estado.
-            foreach (var group in masterFeatureList)
+            // Obtener las facetas directamente de la respuesta de búsqueda actual.
+            var featureList = GetServerFeature(model) ?? new List<FilterDataModel>();
+
+            foreach (var group in featureList)
             {
                 if (group?.Items == null) continue;
 
@@ -473,28 +417,16 @@ namespace CEAM.AzureSearch.WebApp.Services
                 {
                     if (item == null || string.IsNullOrWhiteSpace(item.Value)) continue;
 
-                    // Actualizar contador (es 0 si no está en los resultados frescos).
-                    item.Count = freshCountsLookup.TryGetValue(item.Value, out var newCount) ? newCount : 0;
-
-                    var displayText = item.Value.Split(StringHelper.Separator)[1];
-                    item.Text = $"{displayText} ({item.Count})";
-
                     // Marcar como seleccionado si está en la lista del cliente.
                     item.IsChecked = clientFeatureList.Contains(item.Value) ? "checked" : "";
                 }
 
-                // Recalcular contadores de grupo y estado.
-                group.Count = group.Items.Sum(i => i.Count);
-                group.Text = $"{group.Value} ({group.Count})";
+                // Ajustar estado visual del grupo (abierto si tiene selección).
                 group.IsChecked = group.Items.Any(i => i.IsChecked == "checked") ? "menu-open" : "";
-                group.Items = group.Items.OrderByDescending(i => i.Count).ToList();
             }
 
-            masterFeatureList = masterFeatureList.OrderByDescending(g => g.Count).ToList();
-
-            // Asignar y persistir la lista maestra actualizada.
-            model.FeatureFilter = masterFeatureList;
-            model.ServerFilter.Feature = JsonSerializer.Serialize(masterFeatureList);
+            model.FeatureFilter = featureList;
+            model.ServerFilter.Feature = ""; // Ya no se serializa la lista maestra.
         }
 
         private (FilterDataModel, string) GetServerFilter(ref SearchDataModel model, string field, string textName, string itemName, string serverFilter, string clientFilter)
@@ -779,6 +711,9 @@ namespace CEAM.AzureSearch.WebApp.Services
             options.Facets.Add("Departments,count:100");
             options.Facets.Add("Features,count:10000");
 
+            options.OrderBy.Add("StatusSortOrder asc");
+            options.OrderBy.Add("search.score() desc");
+
             return options;
         }
         private async Task<(SearchResults<PublicoProductDocument> Results, bool IsHybrid)> RunKeywordSearchAsync(string query, string filters, int page, int? size = null)
@@ -1006,6 +941,10 @@ namespace CEAM.AzureSearch.WebApp.Services
                 var canonicalQuery = _normalizer.Normalize(searchText);
                 var queryForBoth = canonicalQuery;
 
+                // --- CACHEO DE ESTRATEGIA (Server-Side) ---
+                // Calculamos un hash simple de la query normalizada para usarlo como key
+                string strategyKey = Convert.ToBase64String(SHA256.HashData(Encoding.UTF8.GetBytes(queryForBoth ?? "")));
+
                 if (string.IsNullOrWhiteSpace(queryForBoth) || queryForBoth.Length > 200)
                 {
                     result = await RunKeywordSearchAsync(queryForBoth, filters, page, size);
@@ -1016,7 +955,39 @@ namespace CEAM.AzureSearch.WebApp.Services
                 }
                 else
                 {
-                    result = await RunHybridSearchAsync(queryForBoth, filters, page, size, searchText);
+                    // Revisar si ya tenemos una estrategia guardada para este texto
+                    if (_strategyCache.TryGetValue(strategyKey, out SearchStrategy savedStrategy))
+                    {
+                        if (savedStrategy == SearchStrategy.Keyword)
+                        {
+                            result = await RunKeywordSearchAsync(queryForBoth, filters, page, size);
+                        }
+                        else if (savedStrategy == SearchStrategy.Hybrid)
+                        {
+                            result = await RunHybridSearchAsync(queryForBoth, filters, page, size, searchText);
+                        }
+                    }
+                    else
+                    {
+                        // Si no hay estrategia en cache, ejecutamos la lógica de decisión
+
+                        // 1. Ejecutar Keyword primero
+                        var keywordResult = await RunKeywordSearchAsync(queryForBoth, filters, page, size);
+
+                        // 2. Evaluar TotalCount
+                        if (keywordResult.Results.TotalCount > 1000)
+                        {
+                            // 3. Quedarse con Keyword y guardar decisión
+                            result = keywordResult;
+                            _strategyCache[strategyKey] = SearchStrategy.Keyword;
+                        }
+                        else
+                        {
+                            // 4. Ejecutar Híbrido y guardar decisión
+                            result = await RunHybridSearchAsync(queryForBoth, filters, page, size, searchText);
+                            _strategyCache[strategyKey] = SearchStrategy.Hybrid;
+                        }
+                    }
                 }
             }
             catch (Exception e)

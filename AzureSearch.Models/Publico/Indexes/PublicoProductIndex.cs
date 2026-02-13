@@ -35,6 +35,9 @@ namespace AzureSearch.Models.Publico.Indexes
         [SimpleField(IsFilterable = true, IsFacetable = true)]
         public string Status { get; set; }
 
+        [SimpleField(IsSortable = true, IsFilterable = true)]
+        public int StatusSortOrder { get; set; }
+
         //[SearchableField(AnalyzerName = LexicalAnalyzerName.Values.EsLucene, IsFilterable = true, IsFacetable = true)]
         [SimpleField(IsFilterable = true, IsFacetable = true)]
         public string[] Departments { get; set; }

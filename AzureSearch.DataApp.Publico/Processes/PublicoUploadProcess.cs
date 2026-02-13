@@ -114,13 +114,30 @@ namespace AzureSearch.DataApp.Publico.Processes
             documents.Item1.ForEach(doc => doc.ContentHash = HashingUtil.CalculateContentHash(doc));
             documents.Item2.ForEach(doc => doc.ContentHash = HashingUtil.CalculateContentHash(doc));
             documents.Item3.ForEach(doc => doc.ContentHash = HashingUtil.CalculateContentHash(doc));
-            documents.Item4.ForEach(doc => doc.ContentHash = HashingUtil.CalculateContentHash(doc));
+
+            // Lógica de ordenamiento para Productos
+            documents.Item4.ForEach(doc =>
+            {
+                doc.StatusSortOrder = CalculateStatusSortOrder(doc.Status);
+                doc.ContentHash = HashingUtil.CalculateContentHash(doc);
+            });
 
             // 3. Cargar los datos en lotes
             await UploadBatchAsync(_agreementSearchClient, documents.Item1, "Acuerdos");
             await UploadBatchAsync(_catalogueSearchClient, documents.Item2, "Catálogos");
             await UploadBatchAsync(_categorySearchClient, documents.Item3, "Categorías");
             await UploadBatchAsync(_productSearchClient, documents.Item4, "Productos");
+        }
+
+        private int CalculateStatusSortOrder(string status)
+        {
+            if (string.IsNullOrWhiteSpace(status)) return 2;
+
+            var s = status.Trim().ToUpperInvariant();
+            if (s == "OFERTADA") return 1;
+            if (s == "SUSPENDIDA") return 3;
+
+            return 2;
         }
 
         /// <summary>
@@ -165,6 +182,12 @@ namespace AzureSearch.DataApp.Publico.Processes
             {
                 var id = getId(doc);
                 newDocumentIds.Add(id);
+
+                // Calcular StatusSortOrder si el documento es de tipo PublicoProductIndex
+                if (doc is PublicoProductIndex productDoc)
+                {
+                    productDoc.StatusSortOrder = CalculateStatusSortOrder(productDoc.Status);
+                }
 
                 if (hashProperty != null)
                 {
@@ -509,6 +532,7 @@ namespace AzureSearch.DataApp.Publico.Processes
                    new SimpleField(nameof(PublicoProductIndex.Image), SearchFieldDataType.String),
                    new SimpleField(nameof(PublicoProductIndex.File), SearchFieldDataType.String),
                    new SimpleField(nameof(PublicoProductIndex.Status), SearchFieldDataType.String) { IsFilterable = true, IsFacetable = true },
+                   new SimpleField(nameof(PublicoProductIndex.StatusSortOrder), SearchFieldDataType.Int32) { IsSortable = true, IsFilterable = true },
                    new SimpleField(nameof(PublicoProductIndex.ContentHash), SearchFieldDataType.String) { IsFilterable = true},
                    new SearchField(nameof(PublicoProductIndex.Departments), SearchFieldDataType.Collection(SearchFieldDataType.String)) { IsFilterable = true, IsFacetable = true },
                    new SearchField(nameof(PublicoProductIndex.Features), SearchFieldDataType.Collection(SearchFieldDataType.String)) { IsFilterable = true, IsFacetable = true },                   
@@ -522,13 +546,7 @@ namespace AzureSearch.DataApp.Publico.Processes
                            new SimpleField(nameof(PublicoAgreementDocument.Name), SearchFieldDataType.String) { IsFilterable = true, IsFacetable = true },
                            new SimpleField(nameof(PublicoAgreementDocument.Status), SearchFieldDataType.String) { IsFilterable = true, IsFacetable = true },
                            new SimpleField(nameof(PublicoAgreementDocument.ContentHash), SearchFieldDataType.String) { IsFilterable = true},
-                           new SearchField(nameof(PublicoAgreementDocument.SearchText), SearchFieldDataType.String)
-                           {
-                               IsSearchable = true,
-                               AnalyzerName = LexicalAnalyzerName.Values.EsLucene,
-                               IsFilterable = true,
-                               IsFacetable = true
-                           }
+                           new SimpleField(nameof(PublicoAgreementDocument.SearchText), SearchFieldDataType.String) { IsFilterable = true, IsFacetable = true }
                        }
                    },
 
@@ -583,14 +601,14 @@ namespace AzureSearch.DataApp.Publico.Processes
                     VectorSearch = new VectorSearch
                     {
                         Profiles =
-                {
-                    new VectorSearchProfile("my-vector-profile", "exhaustive-knn-algorithm")
-                },
+                        {
+                            new VectorSearchProfile("my-vector-profile", "exhaustive-knn-algorithm")
+                        },
                         Algorithms =
-                {
-                    new ExhaustiveKnnAlgorithmConfiguration("exhaustive-knn-algorithm")
-                }
-                    }
+                        {
+                            new ExhaustiveKnnAlgorithmConfiguration("exhaustive-knn-algorithm")
+                        }
+                    },
                 };
 
                 await _targetIndexClient.CreateIndexAsync(definition);
